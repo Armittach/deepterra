@@ -1,0 +1,10 @@
+# Cabeceras de seguridad (Cloudflare Pages u otro hosting compatible).
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(self), camera=(), microphone=(), payment=()
+  Cross-Origin-Opener-Policy: same-origin
+
+/map-config.js
+  Cache-Control: no-store

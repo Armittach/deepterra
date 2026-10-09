@@ -1,0 +1,13 @@
+{
+  "name": "deepterra",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node serve.mjs",
+    "test": "node --test tests/drone.test.mjs",
+    "test:browser": "node tests/drone-browser.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1"
+  }
+}

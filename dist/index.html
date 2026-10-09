@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#07131b">
+<title>DeepTerra · Simulador de subida del mar</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500;600&amp;display=swap">
+<link rel="stylesheet" href="vendor/leaflet.css">
+<link rel="stylesheet" href="ui.css?v=ui-22">
+</head>
+<body>
+
+<div id="portraitGuard" class="portrait-guard" hidden>
+  <i data-lucide="smartphone" aria-hidden="true"></i>
+  <h2>Usa DeepTerra en vertical</h2>
+  <p>Gira el teléfono para continuar.</p>
+  <button id="portraitLock" class="btn btn-primary">Fijar vertical</button>
+  <p id="portraitLockStatus" class="muted" hidden></p>
+</div>
+
+<div id="map" aria-label="Mapa mundial de inundación, desplazable y ampliable"></div>
+
+<!-- Barra superior -->
+<header class="topbar">
+  <button id="menuToggle" class="brand glass" aria-controls="parameters" aria-expanded="false" aria-label="Información de DeepTerra">
+    <i data-lucide="waves" class="brand-mark" aria-hidden="true"></i><span>DeepTerra</span><i data-lucide="chevron-down" class="brand-chevron" aria-hidden="true"></i>
+  </button>
+  <form id="searchForm" class="search glass" role="search" autocomplete="off">
+    <i data-lucide="search" aria-hidden="true"></i>
+    <input id="searchInput" type="search" placeholder="Buscar un lugar o coordenadas" aria-label="Buscar un lugar o coordenadas" enterkeyhint="search">
+    <kbd class="search-key" aria-hidden="true">/</kbd>
+    <button id="searchClose" type="button" class="icon-btn search-close" aria-label="Cerrar búsqueda"><i data-lucide="x" aria-hidden="true"></i></button>
+    <ul id="searchResults" class="search-results" role="listbox" aria-label="Resultados" hidden></ul>
+  </form>
+  <button id="searchToggle" class="icon-btn glass search-toggle" aria-label="Buscar un lugar" aria-controls="searchForm" aria-expanded="false"><i data-lucide="search" aria-hidden="true"></i></button>
+</header>
+
+<!-- Capas -->
+<div id="filterControl" class="filter-control">
+  <button id="filterToggle" class="pill glass filter-toggle" aria-label="Capas del mapa" aria-controls="filterOptions" aria-expanded="false">
+    <i data-lucide="layers" aria-hidden="true"></i><span class="pill-label">Capas</span>
+  </button>
+  <div id="filterOptions" class="panel layers-panel" hidden aria-label="Capas del mapa" role="dialog">
+    <div class="panel-head"><h2>Capas</h2><button id="filterClose" type="button" class="icon-btn" aria-label="Cerrar capas"><i data-lucide="x" aria-hidden="true"></i></button></div>
+    <div id="baseMapSlot"></div>
+    <section class="panel-section">
+      <h3 class="eyebrow">Agua</h3>
+      <label class="switch-row" for="showWater"><i data-lucide="waves" aria-hidden="true"></i><span>Mar simulado</span><input id="showWater" type="checkbox" role="switch" checked><span class="switch" aria-hidden="true"></span></label>
+      <label class="switch-row" for="depthColors"><span class="depth-swatch" aria-hidden="true"></span><span>Colores de profundidad</span><input id="depthColors" type="checkbox" role="switch"><span class="switch" aria-hidden="true"></span></label>
+      <label class="switch-row map-only-filter" for="showContour"><i data-lucide="scan" aria-hidden="true"></i><span>Contorno de inundación</span><input id="showContour" type="checkbox" role="switch"><span class="switch" aria-hidden="true"></span></label>
+      <div class="range-row">
+        <label for="layerTransparency">Transparencia del agua</label><output id="layerTransparencyValue" for="layerTransparency">0 %</output>
+        <input id="layerTransparency" type="range" min="0" max="100" step="1" value="0">
+      </div>
+    </section>
+    <section class="panel-section map-only-filter">
+      <h3 class="eyebrow">Referencias</h3>
+      <label class="switch-row" for="showRelief"><i data-lucide="mountain" aria-hidden="true"></i><span>Relieve sombreado</span><input id="showRelief" type="checkbox" role="switch" checked><span class="switch" aria-hidden="true"></span></label>
+    </section>
+    <section class="panel-section">
+      <h3 class="eyebrow">Pantalla</h3>
+      <label class="switch-row" for="hideUi"><i data-lucide="eye-off" aria-hidden="true"></i><span>Ocultar interfaz <kbd class="key-hint">H</kbd></span><input id="hideUi" type="checkbox" role="switch" data-ui-toggle><span class="switch" aria-hidden="true"></span></label>
+    </section>
+  </div>
+</div>
+
+<!-- Herramientas laterales -->
+<nav class="toolbar" aria-label="Herramientas del mapa">
+  <div class="tool-group glass">
+    <button id="zoomIn" class="tool" aria-label="Acercar"><i data-lucide="plus" aria-hidden="true"></i></button>
+    <button id="zoomOut" class="tool" aria-label="Alejar"><i data-lucide="minus" aria-hidden="true"></i></button>
+    <button id="locateMe" class="tool" aria-label="Ir a mi ubicación"><i data-lucide="locate-fixed" aria-hidden="true"></i></button>
+  </div>
+  <div class="tool-group glass">
+    <div id="transparencyControl" class="water-opacity">
+      <div id="transparencyRail" class="opacity-rail" aria-hidden="true"><span class="opacity-title">Transparencia</span><div id="transparencyTrack" class="opacity-track"></div><output id="transparencyValue" class="opacity-value" for="waterTransparency">0 %</output></div>
+      <button id="transparencyButton" class="tool opacity-button" role="slider" aria-label="Transparencia del agua: toca para abrir o mantén y desliza" aria-expanded="false" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0 %" aria-controls="transparencyRail"><i data-lucide="droplet" aria-hidden="true"></i></button>
+      <input id="waterTransparency" type="range" min="0" max="100" step="1" value="0" hidden tabindex="-1" aria-hidden="true">
+    </div>
+  </div>
+  <div id="droneDock" class="drone-dock">
+    <span class="tool-tip" aria-hidden="true">Volar con dron <span>· arrástralo al mapa</span></span>
+    <div id="dronePlaceholder" class="drone-placeholder" hidden aria-hidden="true"><i data-lucide="drone"></i></div>
+    <button id="droneButton" class="drone-button" disabled aria-label="Explorar con dron: arrastra al mapa o pulsa para elegir un lugar" title="Arrastra el dron al mapa"><i data-lucide="drone" aria-hidden="true"></i></button>
+  </div>
+</nav>
+
+<div id="droneDragHint" class="toast drone-drag-hint" role="status" hidden></div>
+
+<!-- Vista 3D del dron -->
+<section id="droneView" class="drone-view" hidden tabindex="-1" aria-label="Vista 3D del dron, con simulación sincronizada">
+  <canvas id="droneCanvas" class="drone-canvas" aria-label="Relieve y agua en 3D. Arrastra para mirar y usa WASD o flechas para volar"></canvas>
+  <div id="droneUnderwater" class="drone-underwater" hidden></div>
+  <div class="drone-crosshair" aria-hidden="true"></div>
+  <div class="drone-topbar">
+    <button id="droneExit" class="pill glass" aria-label="Volver al mapa" title="Volver al mapa"><i data-lucide="arrow-left" aria-hidden="true"></i><span class="pill-label">Mapa</span></button>
+    <div class="drone-heading">
+      <div class="compass glass" aria-hidden="true"><div id="compassTape" class="compass-tape"></div><span class="compass-mark"></span></div>
+      <div class="drone-heading-text"><span class="sr-only">Rumbo</span><strong id="droneHeading">N · 000°</strong><span id="droneCoords" class="drone-coordinates">—</span></div>
+    </div>
+    <button id="droneSettingsToggle" class="icon-btn glass" aria-label="Ajustes de vuelo" aria-expanded="false" aria-controls="droneSettings"><i data-lucide="settings-2" aria-hidden="true"></i></button>
+  </div>
+  <p id="droneWarning" class="toast drone-flight-warning" hidden></p>
+  <div id="droneTape" class="altitude-tape glass" aria-hidden="true">
+    <span class="tape-title">Altitud</span>
+    <div class="tape-scale"></div>
+    <div class="tape-ground"></div>
+    <div class="tape-water"><span class="tape-water-label"></span></div>
+    <div class="tape-drone"><span class="tape-drone-label"></span></div>
+  </div>
+  <div class="drone-telemetry" aria-label="Telemetría del dron">
+    <div><span data-short="Altura">Altura s/ terreno</span><strong id="droneHeightValue">—</strong></div>
+    <div><span data-short="Altitud">Altitud s/ mar</span><strong id="droneSeaValue">—</strong></div>
+    <div><span data-short="Sobre agua">Sobre el agua</span><strong id="droneClearanceValue" class="water-value">—</strong></div>
+    <div><span data-short="Terreno">Terreno · mar</span><strong id="droneGroundValue">—</strong></div>
+    <div><span data-short="Agua">Nivel del agua</span><strong id="droneWaterValue">—</strong></div>
+    <div><span data-short="Velocidad">Velocidad</span><strong id="droneSpeedValue">—</strong></div>
+  </div>
+  <div class="drone-keys" aria-hidden="true"><span><kbd>WASD</kbd> mover</span><span><kbd>Q</kbd> <kbd>E</kbd> bajar · subir</span><span>Arrastra para mirar</span></div>
+  <div id="droneSettings" class="panel drone-settings" data-alt-mode="terrain" hidden>
+    <div class="panel-head"><h2>Ajustes de vuelo</h2><button id="droneSettingsClose" class="icon-btn" aria-label="Cerrar ajustes de vuelo"><i data-lucide="x" aria-hidden="true"></i></button></div>
+    <div class="slider-field">
+      <div class="slider-head"><span id="droneSpeedLabel">Velocidad máxima</span><span class="slider-value"><input id="droneSpeed" type="number" min="1" max="1000" step="1" value="300" inputmode="decimal" enterkeyhint="go" aria-label="Velocidad · m/s"><span>m/s</span></span></div>
+      <input id="droneSpeedRange" class="sqrt-range" type="range" min="0" max="1000" step="1" data-target="droneSpeed" data-min="1" data-max="1000" aria-labelledby="droneSpeedLabel">
+      <div class="slider-limits" aria-hidden="true"><span>1</span><span>1.000 m/s</span></div>
+    </div>
+    <div class="slider-field">
+      <div class="slider-head"><span id="droneClimbLabel">Velocidad de ascenso</span><span class="slider-value"><input id="droneClimb" type="number" min="1" max="1000" step="1" value="150" inputmode="decimal" enterkeyhint="go" aria-label="Velocidad de ascenso · m/s"><span>m/s</span></span></div>
+      <input id="droneClimbRange" class="sqrt-range" type="range" min="0" max="1000" step="1" data-target="droneClimb" data-min="1" data-max="1000" aria-labelledby="droneClimbLabel">
+      <div class="slider-limits" aria-hidden="true"><span>1</span><span>1.000 m/s</span></div>
+    </div>
+    <div class="field">
+      <span class="field-label" id="altModeLabel">Altura del vuelo</span>
+      <div class="segmented two" role="group" aria-labelledby="altModeLabel">
+        <button type="button" data-alt-mode="terrain" aria-pressed="true">Sobre el terreno</button>
+        <button type="button" data-alt-mode="fixed" aria-pressed="false">Altitud fija</button>
+      </div>
+    </div>
+    <div class="slider-field alt-terrain">
+      <div class="slider-head"><span id="droneAltitudeLabel">Altura sobre el terreno</span><span class="slider-value"><input id="droneAltitude" type="number" min="2" max="2000" step="1" value="60" inputmode="decimal" enterkeyhint="go" aria-label="Altura sobre terreno · m"><span>m</span></span></div>
+      <input id="droneAltitudeRange" class="sqrt-range" type="range" min="0" max="1000" step="1" data-target="droneAltitude" data-min="2" data-max="2000" aria-labelledby="droneAltitudeLabel">
+      <div class="slider-limits" aria-hidden="true"><span>2</span><span>2.000 m</span></div>
+    </div>
+    <div class="slider-field alt-fixed">
+      <div class="slider-head"><span id="droneFixedLabel">Altitud sobre el mar</span><span class="slider-value"><input id="droneFixedAltitude" type="number" min="2" max="9000" step="1" value="600" inputmode="decimal" enterkeyhint="go" aria-label="Altitud fija · m"><span>m</span></span></div>
+      <input id="droneFixedRange" class="sqrt-range" type="range" min="0" max="1000" step="1" data-target="droneFixedAltitude" data-min="2" data-max="9000" aria-labelledby="droneFixedLabel">
+      <div class="slider-limits" aria-hidden="true"><span>2</span><span>9.000 m</span></div>
+    </div>
+    <div class="settings-section">
+      <h3 class="eyebrow">Agua</h3>
+      <label class="switch-row" for="droneShowWater"><i data-lucide="waves" aria-hidden="true"></i><span>Mar simulado</span><input id="droneShowWater" type="checkbox" role="switch" data-mirror="showWater" checked><span class="switch" aria-hidden="true"></span></label>
+      <label class="switch-row" for="droneDepthColors"><span class="depth-swatch" aria-hidden="true"></span><span>Colores de profundidad</span><input id="droneDepthColors" type="checkbox" role="switch" data-mirror="depthColors"><span class="switch" aria-hidden="true"></span></label>
+      <div class="range-row">
+        <label for="droneTransparency">Transparencia del agua</label><output id="droneTransparencyValue" for="droneTransparency">0 %</output>
+        <input id="droneTransparency" class="transparency-mirror" type="range" min="0" max="100" step="1" value="0">
+      </div>
+    </div>
+    <div class="settings-section">
+      <h3 class="eyebrow">Pantalla</h3>
+      <label class="switch-row" for="droneHideUi"><span>Ocultar interfaz</span><input id="droneHideUi" type="checkbox" role="switch" data-ui-toggle><span class="switch" aria-hidden="true"></span></label>
+    <label class="switch-row" for="droneShowTelemetry"><span>Mostrar telemetría</span><input id="droneShowTelemetry" type="checkbox" role="switch" checked><span class="switch" aria-hidden="true"></span></label>
+    <label class="switch-row drone-joystick-option" for="droneShowJoysticks"><span>Mostrar controles táctiles</span><input id="droneShowJoysticks" type="checkbox" role="switch" checked><span class="switch" aria-hidden="true"></span></label>
+    </div>
+    <p class="muted alt-terrain">La altura sigue el relieve. Sobre el océano se mide desde su nivel inicial.</p>
+    <p class="muted alt-fixed">El dron mantiene la altitud sobre el nivel del mar inicial. Si el terreno es más alto, lo sobrevuela a 2 m.</p>
+    <details><summary>Controles</summary><p class="muted">WASD o flechas: volar. Q/E: bajar/subir (cambia la altura del modo activo). Arrastra para mirar. En móvil usa los dos joysticks y el control de altura. Enter o Espacio: reproducir/pausar. Esc: volver al mapa.</p></details>
+  </div>
+  <div id="droneLoading" class="drone-loading" role="status">
+    <div class="drone-spinner" aria-hidden="true"></div>
+    <span class="drone-loading-icon" aria-hidden="true"><i data-lucide="cloud-off"></i></span>
+    <div id="droneLoadingText">Cargando relieve y conexión del agua…</div>
+    <p id="droneLoadingDetail" class="drone-loading-detail" hidden></p>
+    <button id="droneRetry" class="btn btn-primary" hidden>Reintentar</button>
+    <button id="droneCancelLoad" class="btn">Volver al mapa</button>
+  </div>
+  <div class="drone-joysticks">
+    <div id="droneMoveStick" class="drone-stick" role="group" aria-label="Joystick de movimiento"><span class="stick-knob"></span><span class="stick-label">Volar</span></div>
+    <div id="droneLookStick" class="drone-stick" role="group" aria-label="Joystick de cámara"><span class="stick-knob"></span><span class="stick-label">Mirar</span></div>
+  </div>
+  <div class="drone-elevation" aria-label="Control de altura">
+    <div id="droneAltitudeStick" class="drone-altitude-stick" role="slider" tabindex="0" aria-label="Ascenso y descenso del dron" aria-orientation="vertical" aria-valuemin="-100" aria-valuemax="100" aria-valuenow="0" aria-valuetext="Detenido">
+      <i data-lucide="chevron-up" class="altitude-arrow up" aria-hidden="true"></i><span class="altitude-knob"></span><i data-lucide="chevron-down" class="altitude-arrow down" aria-hidden="true"></i>
+    </div>
+  </div>
+  <button id="simPill" class="sim-pill glass" aria-controls="simulationPlayback" aria-expanded="false" aria-label="Abrir simulación">
+    <span class="sim-pill-play"><i data-lucide="play" aria-hidden="true"></i></span>
+    <strong id="simPillLevel">+0 m</strong>
+    <span class="sim-pill-track"><span id="simPillFill"></span></span>
+    <i data-lucide="chevron-down" aria-hidden="true"></i>
+  </button>
+</section>
+
+<button id="showUi" class="icon-btn glass show-ui" hidden aria-label="Mostrar interfaz (H)" title="Mostrar interfaz (H)"><i data-lucide="eye" aria-hidden="true"></i></button>
+<div id="status" class="toast status" role="status">Cargando elevación real…</div>
+<div id="backdrop" class="backdrop" hidden></div>
+
+<!-- Información -->
+<aside id="parameters" class="drawer" aria-label="Información de DeepTerra" inert>
+  <div class="drawer-head">
+    <div class="drawer-brand">
+      <span class="drawer-logo"><i data-lucide="waves" aria-hidden="true"></i></span>
+      <div><h1>DeepTerra</h1><p class="muted">Simulador de subida del nivel del mar</p></div>
+      <button id="closeMenu" class="icon-btn" aria-label="Cerrar información"><i data-lucide="x" aria-hidden="true"></i></button>
+    </div>
+    <div class="tabs" role="tablist" aria-label="Secciones">
+      <button role="tab" id="tabGuide" aria-controls="panelGuide" aria-selected="true">Guía</button>
+      <button role="tab" id="tabModel" aria-controls="panelModel" aria-selected="false" tabindex="-1">Cómo se calcula</button>
+      <button role="tab" id="tabData" aria-controls="panelData" aria-selected="false" tabindex="-1">Datos y créditos</button>
+    </div>
+  </div>
+  <div class="drawer-body">
+    <section id="panelGuide" role="tabpanel" aria-labelledby="tabGuide">
+      <ol class="steps">
+        <li><span class="step-num">1</span><div><strong>Define el escenario</strong><p>Pulsa <em>Escenario</em> y elige cuánto sube el mar (de 0 a 8.848,86 m) y cuánto dura la reproducción.</p></div></li>
+        <li><span class="step-num">2</span><div><strong>Reproduce o recorre</strong><p>Pulsa reproducir, o arrastra la línea de tiempo para ir a cualquier nivel.</p></div></li>
+        <li><span class="step-num">3</span><div><strong>Explora</strong><p>Toca un punto para ver su altitud y si queda bajo el agua. Arrastra el dron al mapa para verlo en 3D.</p></div></li>
+      </ol>
+      <h3 class="eyebrow">Atajos de teclado</h3>
+      <dl class="shortcuts">
+        <dt><kbd>Espacio</kbd></dt><dd>Reproducir o pausar</dd>
+        <dt><kbd>/</kbd></dt><dd>Buscar un lugar</dd>
+        <dt><kbd>WASD</kbd> <kbd>Q</kbd> <kbd>E</kbd></dt><dd>Volar el dron · bajar y subir</dd>
+        <dt><kbd>H</kbd></dt><dd>Ocultar o mostrar la interfaz</dd>
+        <dt><kbd>Esc</kbd></dt><dd>Cerrar panel o volver al mapa</dd>
+      </dl>
+      <div class="notice"><i data-lucide="circle-alert" aria-hidden="true"></i><p>Simulación educativa basada solo en elevación. No predice tsunamis, tiempos de llegada ni daños, y no sirve para evaluar una vivienda ni para decidir una evacuación.</p></div>
+    </section>
+    <section id="panelModel" role="tabpanel" aria-labelledby="tabModel" hidden>
+      <div class="stats">
+        <div><span class="eyebrow">Nivel actual</span><strong id="level">0 m</strong></div>
+        <div><span class="eyebrow">Tierra cubierta</span><strong><span id="areaFull">0</span> km²</strong></div>
+      </div>
+      <p>El nivel del agua sube de 0 hasta la altura del escenario durante el tiempo indicado. Por ejemplo: 100 m y 60 s significa que, a los 30 s, el nivel es de 50 m.</p>
+      <p>Para cada celda se calcula la menor cota que permite una conexión con el océano, siguiendo el terreno y las barreras más altas del camino. Se colorea cuando el agua supera esa cota. Las depresiones aisladas no se llenan hasta superar su barrera.</p>
+      <p>La cota actual es la altitud del terreno menos la subida del mar; un valor negativo no implica inundación si una barrera impide la conexión con el océano.</p>
+      <p>El agua se dibuja con un objetivo de 30 fotogramas por segundo, usando la GPU cuando está disponible. La duración es el tiempo de reproducción de un escenario hipotético; no es un tiempo físico de tsunami. No se modelan corrientes, batimetría, fricción, mareas ni edificios.</p>
+      <p>En detalle, el mar se reconoce también por celdas a nivel del mar o bajo él, cerca de la costa global. Los bloques vecinos comparten el nivel necesario para que el agua cruce sus bordes. Puede omitir barreras pequeñas y cambiar al cargar mayor resolución. La superficie informada se estima con la grilla global.</p>
+      <p id="resolution" class="muted">Cargando elevación…</p>
+    </section>
+    <section id="panelData" role="tabpanel" aria-labelledby="tabData" hidden>
+      <ul class="credits">
+        <li><a href="https://www.maptiler.com/copyright/" target="_blank" rel="noopener">© MapTiler</a> · mapas de calles y satélite, búsqueda de lugares y textura satelital de la vista 3D.</li>
+        <li><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a> · mapa base y datos bajo ODbL; búsqueda con <a href="https://nominatim.org/" target="_blank" rel="noopener">Nominatim</a> cuando MapTiler no está disponible.</li>
+        <li class="dem-copernicus"><a href="https://dataspace.copernicus.eu/explore-data/data-collections/copernicus-contributing-missions/collections-description/COP-DEM" target="_blank" rel="noopener">Copernicus DEM GLO-30</a> · elevación para la simulación, vía <a href="https://mapterhorn.com/attribution" target="_blank" rel="noopener">Mapterhorn</a>. Produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved. La Unión Europea, la ESA, el DLR y Airbus no asumen responsabilidad por el uso de estos datos.</li>
+        <li class="dem-aws"><a href="https://github.com/tilezen/joerd" target="_blank" rel="noopener">Mapzen / Tilezen Terrain Tiles</a> · elevación terrestre y oceánica, alojada en AWS Open Data, para la simulación, el relieve sombreado y el relieve del dron. <a href="terrain-attribution.md" target="_blank" rel="noopener">Todas las fuentes de elevación</a>.</li>
+        <li><a href="https://leafletjs.com/" target="_blank" rel="noopener">Leaflet 1.9.4</a> · biblioteca del mapa; <a href="vendor/LEAFLET-LICENSE.txt" target="_blank" rel="noopener">licencia BSD de 2 cláusulas</a>.</li>
+        <li><a href="https://lucide.dev/" target="_blank" rel="noopener">Lucide 1.52.0</a> · iconos; <a href="vendor/LUCIDE-LICENSE.txt" target="_blank" rel="noopener">licencia ISC</a>.</li>
+        <li><a href="https://threejs.org/" target="_blank" rel="noopener">Three.js 0.180.0</a> · vista 3D del dron; <a href="vendor/THREE-LICENSE.txt" target="_blank" rel="noopener">licencia MIT</a>.</li>
+        <li><a href="https://vercel.com/font" target="_blank" rel="noopener">Geist</a> · tipografía; licencia SIL Open Font.</li>
+        <li><a href="https://github.com/Armittach/deepterra" target="_blank" rel="noopener">DeepTerra · Armittach</a> · código de la aplicación; <a href="LICENSE" target="_blank" rel="noopener">licencia MIT</a>.</li>
+      </ul>
+      <h3 class="eyebrow">Límites</h3>
+      <p>Grilla global de unos 39 km por celda en el ecuador. El mapa permite zoom hasta nivel 19 y la elevación se carga hasta nivel 15; al acercarte más se amplía el terreno disponible, sin aumentar su precisión.</p>
+      <p>Cobertura Mercator entre 85° S y 85° N, sin casquetes polares. El máximo es 8.848,86 m, altura oficial del Everest; los niveles extremos son ficticios.</p>
+      <p><a href="THIRD_PARTY_NOTICES.md" target="_blank" rel="noopener">Fuentes, licencias y créditos completos</a></p>
+    </section>
+  </div>
+  <div class="drawer-foot"><a href="https://github.com/Armittach/deepterra" target="_blank" rel="noopener"><i data-lucide="external-link" aria-hidden="true"></i>Código en GitHub</a><span>MIT · Armittach</span></div>
+</aside>
+
+<!-- Inspección en móvil -->
+<section id="inspectionSheet" class="inspection-sheet" hidden aria-label="Punto seleccionado"></section>
+
+<!-- Simulación -->
+<div id="simulationPlayback" class="playback" role="region" aria-label="Controles de simulación">
+  <div id="depthLegend" class="depth-legend" hidden aria-label="Profundidad del agua sobre el terreno, en metros">
+    <span class="eyebrow">Profundidad del agua</span>
+    <div class="depth-bar"><span style="--swatch:#67e8f9"></span><span style="--swatch:#38bdf8"></span><span style="--swatch:#3b82f6"></span><span style="--swatch:#8b5cf6"></span><span style="--swatch:#d946ef"></span><span style="--swatch:#f472b6"></span></div>
+    <div class="depth-ticks"><span>0</span><span>10</span><span>50</span><span>100</span><span>500</span><span>1000</span><span>m</span></div>
+  </div>
+  <div class="sheet-handle" aria-hidden="true"></div>
+  <div class="playback-controls">
+    <div class="play-group">
+      <button id="play" aria-keyshortcuts="Enter Space" class="play-button" disabled aria-label="Reproducir simulación" aria-pressed="false"><span id="playIcon"><i data-lucide="play" aria-hidden="true"></i></span></button>
+      <button id="restart" class="icon-btn restart" aria-label="Volver al inicio"><i data-lucide="rotate-ccw" aria-hidden="true"></i></button>
+    </div>
+    <div class="readout">
+      <span class="eyebrow">Nivel del mar</span>
+      <output id="progressLevel" class="current-rise" for="time height" aria-label="Subida actual del mar">+0 m</output>
+      <span class="readout-sub"><span id="elapsed">0 / 60 s</span><span id="timeLabel" class="sr-only">0 %</span></span>
+    </div>
+    <div class="scrubber">
+      <input id="time" type="range" min="0" max="100" step="0.1" value="0" disabled aria-label="Progreso de simulación">
+      <div class="scale" aria-hidden="true"><span>0 m</span><span></span><span></span><span></span><span></span></div>
+    </div>
+    <span class="divider" aria-hidden="true"></span>
+    <button id="scenarioToggle" class="scenario-button" aria-controls="scenarioPanel" aria-expanded="false">
+      <span><span class="eyebrow">Escenario</span><strong id="scenarioSummary">10 m · 60 s</strong></span>
+      <i data-lucide="sliders-horizontal" aria-hidden="true"></i>
+    </button>
+    <div class="stat">
+      <span class="eyebrow">Tierra cubierta</span>
+      <strong><span id="area">0</span> km²</strong>
+      <span class="stat-sub">estimación global</span>
+    </div>
+  </div>
+  <div id="scenarioPanel" class="panel scenario-panel" role="dialog" aria-labelledby="scenarioTitle" hidden>
+    <div class="panel-head"><div><h2 id="scenarioTitle">Escenario</h2><p class="muted">Cuánto sube el mar y cuánto dura la reproducción.</p></div><button id="scenarioClose" type="button" class="icon-btn" aria-label="Cerrar escenario"><i data-lucide="x" aria-hidden="true"></i></button></div>
+    <div class="field">
+      <label for="height">Subida máxima</label>
+      <div class="stepper">
+        <button type="button" class="step-btn" data-step="-1" aria-label="Restar altura">−</button>
+        <div class="number-field"><input id="height" type="number" min="0" max="8848.86" step="0.01" value="10" inputmode="decimal" enterkeyhint="go" aria-label="Altura máxima en metros"><span>m</span></div>
+        <button type="button" class="step-btn" data-step="1" aria-label="Sumar altura">+</button>
+      </div>
+      <div class="chips" role="group" aria-label="Alturas sugeridas">
+        <button type="button" class="chip" data-height="1">1 m</button>
+        <button type="button" class="chip" data-height="10">10 m</button>
+        <button type="button" class="chip" data-height="100">100 m</button>
+        <button type="button" class="chip" data-height="300">300 m</button>
+        <button type="button" class="chip" data-height="1000">1.000 m</button>
+        <button type="button" class="chip" data-height="8848.86">Everest · 8.848,86 m</button>
+      </div>
+    </div>
+    <div class="field">
+      <span class="field-label" id="durationLabel">Duración de la reproducción</span>
+      <div class="duration-row">
+        <div class="segmented" role="group" aria-labelledby="durationLabel">
+          <button type="button" data-duration="15">15 s</button>
+          <button type="button" data-duration="30">30 s</button>
+          <button type="button" data-duration="60">60 s</button>
+          <button type="button" data-duration="120">2 min</button>
+        </div>
+        <div class="number-field small"><input id="duration" type="number" min="1" max="3600" step="1" value="60" inputmode="numeric" enterkeyhint="go" aria-label="Duración en segundos"><span>s</span></div>
+      </div>
+      <p class="muted">Es el tiempo de reproducción, no el de una inundación real.</p>
+    </div>
+    <div class="panel-actions"><button id="scenarioApply" type="button" class="btn btn-primary"><i data-lucide="play" aria-hidden="true"></i>Aplicar y reproducir</button></div>
+  </div>
+</div>
+
+<div class="cursor-info" aria-label="Información del punto bajo el cursor">
+  <span id="cursorCoords">Coordenadas: —</span>
+  <span id="cursorAltitude">Terreno: — m s. n. m.</span>
+  <span id="cursorRelative">Cota actual: — m</span>
+  <span id="cursorStatus">Mueve el mouse o toca el mapa</span>
+</div>
+
+<script src="vendor/lucide.min.js"></script>
+<script src="icons.js"></script>
+<script src="vendor/leaflet.js"></script>
+<script src="flood-model.js?v=20261006-26"></script>
+<script src="flood-network.js?v=20261006-26"></script>
+<script src="flood-visuals.js?v=20261006-26"></script>
+<script src="flood-renderer.js?v=drone-terrain-16"></script>
+<script src="terrain-quality.js?v=terrain-quality-3"></script>
+<script src="map-config.js?v=1"></script>
+<script src="app.js?v=ui-22"></script>
+<script src="map-preview.js?v=ui-14"></script>
+<script src="ui.js?v=ui-18"></script>
+<script type="module" src="drone.js?v=ui-28"></script>
+</body>
+</html>

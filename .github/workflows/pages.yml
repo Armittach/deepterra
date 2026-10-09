@@ -1,0 +1,37 @@
+name: Publish DeepTerra to GitHub Pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure map providers
+        env:
+          MAPTILER_API_KEY: ${{ secrets.MAPTILER_API_KEY }}
+        # Solo maptilerKey (opcional), restringida
+        # por referente porque se publica en map-config.js. map-config.js?v= se sella con
+        # el commit para que el navegador no use una copia antigua.
+        run: |
+          node --input-type=module -e 'import fs from "node:fs"; fs.writeFileSync("dist/map-config.js", "window.DEEPTERRA_MAP_CONFIG=" + JSON.stringify({env:"production",maptilerKey:process.env.MAPTILER_API_KEY || ""}) + ";\n");'
+          sed -i "s/map-config\.js?v=[^\"]*/map-config.js?v=${GITHUB_SHA::12}/" dist/index.html
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
