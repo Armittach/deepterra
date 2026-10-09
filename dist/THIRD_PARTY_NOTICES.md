@@ -11,9 +11,9 @@ Licencia BSD de 2 cláusulas. El texto completo se conserva en [vendor/LEAFLET-L
 
 © OpenStreetMap contributors. Datos bajo Open Database License (ODbL), con las condiciones aplicables a los mapas publicados. Consulte https://www.openstreetmap.org/copyright y la política de uso de teselas https://operations.osmfoundation.org/policies/tiles/.
 
-## MapTiler (plan gratuito)
+## MapTiler
 
-© MapTiler. Mapas de calles y satélite, geocodificación y textura satelital de la vista 3D, sujetos a los términos de MapTiler (https://www.maptiler.com/copyright/ y https://www.maptiler.com/terms/). Su logo y créditos se muestran sobre el mapa mientras se usan sus mapas. Sin clave de MapTiler se usa OpenStreetMap y la búsqueda de Nominatim (https://operations.osmfoundation.org/policies/nominatim/). El plan DeepTerra Pro no usa MapTiler ni OpenStreetMap.
+© MapTiler. Mapas de calles y satélite, geocodificación y textura satelital de la vista 3D, sujetos a los términos de MapTiler (https://www.maptiler.com/copyright/ y https://www.maptiler.com/terms/). Su logo y créditos se muestran sobre el mapa mientras se usan sus mapas. Sin clave de MapTiler se usa OpenStreetMap y la búsqueda de Nominatim (https://operations.osmfoundation.org/policies/nominatim/).
 
 ## Elevación y grillas derivadas
 

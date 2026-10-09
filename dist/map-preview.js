@@ -20,7 +20,7 @@
   function maptilerBasemap(){
     const key=String(config.maptilerKey||'').trim();
     const group=makeGroup([['streets','streets-thumb','Calles'],['hybrid','satellite-thumb','Satélite']]);group.hidden=true;
-    // Plan Free de MapTiler: su logo, enlazado a su web, debe verse mientras se usan sus mapas.
+    // Términos de MapTiler: su logo, enlazado a su web, debe verse mientras se usan sus mapas.
     const logo=document.createElement('a');logo.className='maptiler-logo';logo.href='https://www.maptiler.com';logo.target='_blank';logo.rel='noopener';logo.hidden=true;
     const status=group.querySelector('output'),buttons=[...group.querySelectorAll('[data-map]')];
     const osmLayer=baseMap;let active=baseMap,pending=null,generation=0;
