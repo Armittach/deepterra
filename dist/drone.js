@@ -541,6 +541,7 @@ function closeDrone() {
 }
 $('droneExit').addEventListener('click',closeDrone);
 $('droneCancelLoad').addEventListener('click',closeDrone);
+function setLoadingError(on){loading.classList.toggle('failed',on);if(!on){$('droneLoadingDetail').hidden=true;$('droneLoadingDetail').textContent='';}}
 $('droneRetry').addEventListener('click',()=>{if(!session)return;const point=latLng(session.origin);closeDrone();openDrone(point);});
 function setFlightSettings(open){if(open)setFilter(false);$('droneSettings').hidden=!open;$('droneSettingsToggle').setAttribute('aria-expanded',String(open));if(!open&&document.activeElement?.closest('#droneSettings'))document.activeElement.blur();}
 $('droneShowTelemetry').addEventListener('change',event=>view.classList.toggle('hide-telemetry',!event.target.checked));

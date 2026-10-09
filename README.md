@@ -34,8 +34,6 @@ Sin hacer nada más, DeepTerra usa el mapa de OpenStreetMap. Si quieres mapas de
 window.DEEPTERRA_MAP_CONFIG={maptilerKey:'TU_CLAVE'};
 ```
 
-Ese archivo está ignorado por git, así que tu clave no se sube al repositorio.
-
 ## Créditos
 
 DeepTerra existe gracias a datos y herramientas abiertas:
