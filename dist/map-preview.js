@@ -14,12 +14,14 @@
 <output class="base-map-status" role="status"></output>`;
     slot.append(group);return group;
   }
-  maptilerBasemap();
+  // Extensión opcional (DeepTerraExtensions.basemap): otro proveedor reemplaza a MapTiler y OpenStreetMap.
+  const extension=window.DeepTerraExtensions?.basemap;
+  if(extension)extension({map,slot,credits,makeGroup,link});else maptilerBasemap();
 
   /* ---------- MapTiler con OpenStreetMap de respaldo ---------- */
   function maptilerBasemap(){
     const key=String(config.maptilerKey||'').trim();
-    const group=makeGroup([['streets','streets-thumb','Calles'],['hybrid','satellite-thumb','Satélite']]);group.hidden=true;
+    const group=makeGroup([['streets','streets-thumb','Estándar'],['hybrid','satellite-thumb','Satélite']]);group.hidden=true;
     // Términos de MapTiler: su logo, enlazado a su web, debe verse mientras se usan sus mapas.
     const logo=document.createElement('a');logo.className='maptiler-logo';logo.href='https://www.maptiler.com';logo.target='_blank';logo.rel='noopener';logo.hidden=true;
     const status=group.querySelector('output'),buttons=[...group.querySelectorAll('[data-map]')];

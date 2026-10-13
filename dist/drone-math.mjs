@@ -75,3 +75,57 @@ export function terrainSampler(records, zoom = DRONE_ZOOM) {
     return {ground, threshold: nearest.record.threshold[nearest.index], sea: Boolean(nearest.record.sea[nearest.index])};
   };
 }
+
+// Ajustes editables (dist/ajustes.js → window.DeepTerraAjustes). Cada entrada: [por omisión, mínimo, máximo].
+// Un valor que falta, no es número o se sale del rango se reemplaza (por omisión) o se recorta (al rango).
+export const DRONE_SETTINGS = Object.freeze({
+  dron: {distanciaDibujoKm: [80, 20, 150], velocidadInicial: [300, 1, 3000], velocidadMaxima: [1000, 50, 3000],
+    subida: [150, 1, 3000], alturaInicial: [60, 2, 2000], alturaFijaInicial: [600, 2, 20000], alturaFijaMax: [9000, 500, 20000],
+    campoVision: [65, 40, 100], cuadrosMaximos: [30, 15, 144], resolucionMaxima: [1.5, 0.5, 2], sensibilidadMirar: [1, 0.2, 3]},
+  niebla: {inicio: [0.25, 0, 0.9], fin: [1, 0.5, 1]},
+  carga: {esperaMaximaS: [8, 2, 30], fundidoMs: [600, 0, 3000]}
+});
+// Devuelve {values, issues}: values congelado con todos los grupos del esquema; issues = textos de lo corregido.
+export function parseSettings(raw, schema = DRONE_SETTINGS) {
+  const values = {}, issues = [];
+  for (const [group, entries] of Object.entries(schema)) {
+    values[group] = {};
+    for (const [key, [fallback, min, max]] of Object.entries(entries)) {
+      const given = raw?.[group]?.[key];let value = fallback;
+      if (given !== undefined) {
+        const number = typeof given === 'string' && given.trim() !== '' ? Number(given.replace(',', '.')) : given;
+        if (typeof number !== 'number' || !Number.isFinite(number)) issues.push(group + '.' + key + ': no es un número, se usa ' + fallback);
+        else {value = clamp(number, min, max);if (value !== number) issues.push(group + '.' + key + ': fuera de rango, se usa ' + value);}
+      }
+      values[group][key] = value;
+    }
+  }
+  return {values, issues};
+}
+// Ajustes del dron con las reglas entre valores (velocidades ≤ máxima, altitud fija ≤ su máximo, niebla).
+export function droneSettings(raw) {
+  const {values, issues} = parseSettings(raw, DRONE_SETTINGS), d = values.dron, n = values.niebla;
+  d.velocidadInicial = Math.min(d.velocidadInicial, d.velocidadMaxima);d.subida = Math.min(d.subida, d.velocidadMaxima);
+  d.alturaFijaInicial = Math.min(d.alturaFijaInicial, d.alturaFijaMax);n.inicio = Math.min(n.inicio, n.fin - 0.05);
+  for (const group of Object.values(values)) Object.freeze(group);
+  return {values: Object.freeze(values), issues};
+}
+// Alcance de un nivel de terreno (en bloques del zoom del dron, desde el centro): radio·factor + medio bloque.
+export const levelReach = (radius, factor) => radius * factor + factor / 2;
+// Tope del anillo lejano (zoom 10) según el equipo: ±40 km (low), ±85 km (mid), ±120 km (high) aprox.
+export const TIER_FAR_RADIUS = Object.freeze({low: 1, mid: 2, high: 3});
+// Radio del anillo lejano para ver `distanceKm`: el menor que llega a esa distancia (0 = no hace falta,
+// basta el nivel interior que llega a innerReach bloques), con el tope del equipo.
+export function farRadius(distanceKm, span, factor, innerReach, tier = 'high') {
+  const need = distanceKm * 1000 / span;
+  const radius = need <= innerReach ? 0 : Math.ceil((need - factor / 2) / factor);
+  return clamp(radius, 0, TIER_FAR_RADIUS[tier] ?? TIER_FAR_RADIUS.high);
+}
+// Niebla y plano lejano de la cámara (m): la niebla se cierra en la distancia de dibujo (o antes, si el
+// terreno cargado no llega). reach = alcance del terreno cargado (m); loaded = ya hay anillos lejanos.
+export function viewDistance({reach, span, limitKm, start, end, loaded}) {
+  const limit = limitKm * 1000;
+  if (!loaded) {const far = Math.min(limit, reach + 2 * span) * end;return {near: Math.min(2.2 * span, far * 0.9), far, camera: far * 1.05 + 3000};}
+  const distance = Math.min(limit, reach), far = distance * end;
+  return {near: distance * start, far, camera: far * 1.05 + 3000};
+}

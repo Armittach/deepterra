@@ -1,7 +1,10 @@
-import {DRONE_ZOOM, RETURN_RADIUS, cancelDrop, clamp, worldPoint, latLng, tileSpan, tileWindow, terrainSampler, flooded, moveDrone, planTerrainWindow} from './drone-math.mjs';
+import {DRONE_ZOOM, RETURN_RADIUS, cancelDrop, clamp, worldPoint, latLng, tileSpan, tileWindow, terrainSampler, flooded, moveDrone, planTerrainWindow, droneSettings, farRadius, levelReach, viewDistance} from './drone-math.mjs?v=ajustes-1';
 
 const bridge = window.DeepTerraDroneBridge;
 // Relieve propio con imágenes satelitales de MapTiler (si hay maptilerKey).
+// Extensión opcional (DeepTerraExtensions.droneSurface): otra superficie 3D reemplaza al relieve propio,
+// que entonces solo sirve para el agua y las alturas; sin respaldo si esa superficie falla.
+const surface = window.DeepTerraExtensions?.droneSurface;
 const $ = id => document.getElementById(id);
 const dock = $('droneDock'), button = $('droneButton'), placeholder = $('dronePlaceholder');
 const hint = $('droneDragHint'), view = $('droneView'), canvas = $('droneCanvas');
@@ -9,15 +12,22 @@ const speedInput = $('droneSpeed'), altitudeInput = $('droneAltitude'), fixedInp
 const warning = $('droneWarning'), readout = $('droneCoords'), loading = $('droneLoading');
 let gesture = null, placement = false, session = null, sequence = 0, suppressClickUntil = 0;
 // mode 'terrain': altura sobre el relieve. mode 'fixed': altitud constante sobre el nivel del mar inicial.
-let options = {speed: 300, climb: 150, altitude: 60, mode: 'terrain', fixed: 600};
+// Ajustes editables (ajustes.js): valores revisados y recortados a rangos seguros (drone-math.mjs).
+const {values: AJ, issues: AJ_ISSUES} = droneSettings(window.DeepTerraAjustes);
+if (!window.DeepTerraAjustes) AJ_ISSUES.push('ajustes.js no se pudo leer (¿error de escritura?): se usan los valores por omisión');
+(window.DeepTerraDroneDebug ??= {}).ajustes = {values: AJ, issues: AJ_ISSUES};
+// Para pruebas: bloques de agua del dron (umbral, transición).
+window.DeepTerraDroneDebug.water = () => session ? [...session.tiles].map(([record, item]) => ({record, item})) : [];
+let options = {speed: AJ.dron.velocidadInicial, climb: AJ.dron.subida, altitude: AJ.dron.alturaInicial, mode: 'terrain', fixed: AJ.dron.alturaFijaInicial};
 let lastFlight = {y: null, ground: 0};
-const MAX_FIXED = 9000, MAX_SPEED = 1000;
+const MAX_FIXED = AJ.dron.alturaFijaMax, MAX_SPEED = AJ.dron.velocidadMaxima;
 // Ventana de terreno: 7×7 bloques (radio 3). Se entra con los 5×5 centrales y el anillo
 // exterior se carga después, con menos detalle, para ver más lejos sin cargar más al inicio.
 const VIEW_RADIUS = 3, START_RADIUS = 2;
 // Anillos lejanos con menos detalle a medida que se alejan. Cada nivel se recorta donde ya hay
-// uno más detallado. Zoom 12: 5×5 bloques de 4×4 (≈ ±21 km). Zoom 10: 7×7 bloques de 16×16
-// (≈ ±120 km; ±85 km en pantallas táctiles, 5×5). Se cargan en orden, en segundo plano.
+// uno más detallado. Zoom 12: 5×5 bloques de 4×4 (≈ ±21 km). Zoom 10: bloques de 16×16 con el radio
+// justo para llegar a la distancia de dibujo (ajustes.js; con tope según el equipo: 1, 2 o 3 bloques
+// ≈ ±40, ±85 o ±120 km). Se cargan en orden, en segundo plano.
 const TOUCH = matchMedia('(pointer:coarse)').matches;
 // Equipos modestos (poca memoria, pocos núcleos o GPU básica) parten con el anillo exterior más chico.
 function deviceTier(){
@@ -29,15 +39,18 @@ function deviceTier(){
 // ?alcance=completo desactiva el ajuste automático (pruebas y equipos donde se quiera forzar).
 const FULL_REACH = new URLSearchParams(location.search).get('alcance')==='completo';
 const TIER = FULL_REACH ? 'high' : deviceTier();
-const FAR_LEVELS = [{zoom: 12, radius: 2, segments: 32}, {zoom: 10, radius: {low: 1, mid: 2, high: 3}[TIER], segments: 24}];
+const FAR_LEVELS = [{zoom: 12, radius: 2, segments: 32}, {zoom: 10, radius: null, segments: 24}];
 const EARTH_DIAMETER = 12742000;
 let home = {x: 0, y: 0}, threePromise;
 const keys = new Set();
 let verticalInput=0,verticalPointer=null;
-function resetAltitudeStick(){verticalInput=0;verticalPointer=null;const el=$('droneAltitudeStick');el.style.setProperty('--altitude-offset','0px');el.setAttribute('aria-valuenow','0');el.setAttribute('aria-valuetext','Detenido');}
+function resetAltitudeStick(){verticalInput=0;verticalPointer=null;document.querySelectorAll('.drone-alt-btn.is-pressed').forEach(b=>b.classList.remove('is-pressed'));const el=$('droneAltitudeStick');el.style.setProperty('--altitude-offset','0px');el.setAttribute('aria-valuenow','0');el.setAttribute('aria-valuetext','Detenido');}
 const sticks={move:{x:0,y:0},look:{x:0,y:0}};
-function resetSticks(){resetAltitudeStick();for(const stick of Object.values(sticks)){stick.x=stick.y=0;}document.querySelectorAll('.stick-knob').forEach(el=>el.style.transform='translate(-50%,-50%)');}
-const fmt = number => Number(number).toLocaleString('es-CL', {maximumFractionDigits: 1});
+function resetSticks(){resetAltitudeStick();for(const stick of Object.values(sticks)){stick.x=stick.y=0;}document.querySelectorAll('.stick-knob').forEach(el=>el.style.transform='translate(-50%,-50%)');document.querySelectorAll('.drone-stick.is-active').forEach(el=>el.classList.remove('is-active'));syncSticksHeld();}
+// sticks-held: algún joystick está presionado (en vertical o en horizontal). ui.css aclara el mando y esconde
+// las opciones del escenario mientras tanto; los joysticks siguen igual de visibles.
+function syncSticksHeld(){const v=document.getElementById('droneView');if(!v)return;const held=Boolean(v.querySelector('.drone-stick.is-active'));if(held!==v.classList.contains('sticks-held'))v.classList.toggle('sticks-held',held);}
+const fmt = number => Number(number).toLocaleString(window.DeepTerraI18n?.locale||'es-CL', {maximumFractionDigits: 1});
 
 function positionDock() {
   if (gesture || session) return;
@@ -134,25 +147,38 @@ gl_Position=projectionMatrix*viewMatrix*world;
 #include <logdepthbuf_vertex>
 }`;
 const WATER_FRAGMENT = `#include <logdepthbuf_pars_fragment>
-uniform sampler2D terrainData;uniform float level;uniform float opacity;
-uniform float visibleWater;uniform float depthColors;uniform float contour;uniform vec4 coreRect;uniform float clipCore;varying vec2 vCell;varying vec3 vWorld;
-bool wet(vec2 p){vec4 cell=texture2D(terrainData,clamp(p,vec2(0.5/256.0),vec2(255.5/256.0)));return cell.b>0.5||level>cell.g+0.00001;}
+uniform sampler2D terrainData;uniform float level;uniform float opacity;uniform float fade;
+uniform float visibleWater;uniform float depthColors;uniform float contour;uniform float hideSea;uniform vec4 coreRect;uniform float clipCore;varying vec2 vCell;varying vec3 vWorld;
+// Umbral con transición: si los datos del bloque cambiaron hace poco (fade < 1), lo que recién pasa a inundado (seco con el umbral
+// anterior, canal a) aparece de a poco, de lo más hondo a lo más bajo.
+float limit(vec4 cell){if(fade<0.999&&level>cell.g&&cell.a>=level&&level-cell.g<(1.0-fade)*max(1.0,level))return level;return cell.g;}
+bool wet(vec2 p){vec4 cell=texture2D(terrainData,clamp(p,vec2(0.5/256.0),vec2(255.5/256.0)));return cell.b>0.5||level>limit(cell)+0.00001;}
+// Umbral y suelo interpolados (bilineal) entre los 4 datos vecinos: la orilla avanza de forma continua
+// dentro de cada celda, como un líquido, en vez de cubrir celdas enteras de golpe.
+vec4 at(vec2 p){return texture2D(terrainData,clamp(p,vec2(0.5/256.0),vec2(255.5/256.0)));}
+float lim(vec4 c){return c.b>0.5?-1.0:min(limit(c),level+50.0);}
+vec2 smoothCell(vec2 uv){vec2 p=uv*256.0-0.5,b=floor(p),f=p-b;vec2 c00=(b+0.5)/256.0,d=vec2(1.0/256.0);
+vec4 a=at(c00),bb=at(c00+vec2(d.x,0.0)),c=at(c00+vec2(0.0,d.y)),e=at(c00+d);
+return vec2(mix(mix(lim(a),lim(bb),f.x),mix(lim(c),lim(e),f.x),f.y),mix(mix(a.r,bb.r,f.x),mix(c.r,e.r,f.x),f.y));}
 vec3 depthColor(float d){if(d<10.0)return vec3(103.,232.,249.)/255.;if(d<50.0)return vec3(56.,189.,248.)/255.;if(d<100.0)return vec3(59.,130.,246.)/255.;if(d<500.0)return vec3(139.,92.,246.)/255.;if(d<1000.0)return vec3(217.,70.,239.)/255.;return vec3(244.,114.,182.)/255.;}
 void main(){
 #include <logdepthbuf_fragment>
 if(clipCore>0.5&&vWorld.x>coreRect.x&&vWorld.x<coreRect.y&&vWorld.z>coreRect.z&&vWorld.z<coreRect.w)discard;
-vec4 cell=texture2D(terrainData,vCell);bool sea=cell.b>0.5;
-if(visibleWater<0.5||opacity<0.001||(!sea&&level<=cell.g+0.00001))discard;
-float depth=max(0.0,level-cell.r);vec3 rgb=depthColors>0.5&&!sea?depthColor(depth):vec3(0.12,0.56,0.68);
+vec4 cell=texture2D(terrainData,vCell);bool sea=cell.b>0.5;float own=limit(cell);vec2 sm=smoothCell(vCell);float edge=own<level+50.0?sm.x:own;
+if(visibleWater<0.5||opacity<0.001||(!sea&&level<=edge+0.00001))discard;
+if(hideSea>0.5&&sea&&level<2.0)discard;
+float depth=max(0.0,level-sm.y);vec3 rgb=depthColors>0.5&&!sea?depthColor(depth):vec3(0.12,0.56,0.68);
 if(contour>0.5&&!sea){vec2 dx=vec2(1.0/256.0,0.0),dy=vec2(0.0,1.0/256.0);if(!wet(vCell-dx)||!wet(vCell+dx)||!wet(vCell-dy)||!wet(vCell+dy))rgb=vec3(1.0,0.92,0.6);}
-gl_FragColor=vec4(rgb,0.85*opacity);}`;
+// Orilla suave: en los primeros centímetros el borde se funde, sin escalones.
+float soft=sea?1.0:smoothstep(0.0,max(0.04,level*0.003),level-edge);
+gl_FragColor=vec4(rgb,0.85*opacity*soft);}`;
 
 function textureData(THREE, record) {
   const values = new Float32Array(256 * 256 * 4);
   for (let i = 0; i < record.dem.length; i++) {
     values[i * 4] = record.dem[i];
     values[i * 4 + 1] = Number.isFinite(record.threshold[i]) ? record.threshold[i] : 65536;
-    values[i * 4 + 2] = record.sea[i]; values[i * 4 + 3] = 1;
+    values[i * 4 + 2] = record.sea[i]; values[i * 4 + 3] = values[i * 4 + 1];
   }
   const texture = new THREE.DataTexture(values, 256, 256, THREE.RGBAFormat, THREE.FloatType);
   texture.minFilter = texture.magFilter = THREE.NearestFilter;
@@ -160,7 +186,7 @@ function textureData(THREE, record) {
   return texture;
 }
 function terrainImagery(current,coords){
-  const key=String(window.DEEPTERRA_MAP_CONFIG?.maptilerKey||'').trim();
+  const key=surface?'':String(window.DEEPTERRA_MAP_CONFIG?.maptilerKey||'').trim();
   if(!key)return Promise.resolve(null);
   current.imageryCache??=new Map();
   const id=coords.z+'/'+coords.x+'/'+coords.y;
@@ -250,10 +276,10 @@ function buildTile(current, record, level = null) {
   if (far) {material.clippingPlanes = level.clip; material.clipIntersection = true;}
   const terrain = new THREE.Mesh(geometry, material);
   const x = ((ux + 0.5)*f - origin.x)*span, z = ((record.coords.y+0.5)*f-origin.y)*span;
-  terrain.position.set(x,0,z);scene.add(terrain);
+  terrain.position.set(x,0,z);terrain.visible=!surface;scene.add(terrain);
   const texture = textureData(THREE,record);
   const waterMaterial = new THREE.ShaderMaterial({vertexShader:WATER_VERTEX,fragmentShader:WATER_FRAGMENT,
-    uniforms:{...current.uniforms,terrainData:{value:texture},clipCore:{value:far?1:0},coreRect:far?level.rect:{value:new THREE.Vector4()}},side:THREE.DoubleSide,transparent:true,depthWrite:false});
+    uniforms:{...current.uniforms,terrainData:{value:texture},fade:{value:1},clipCore:{value:far?1:0},coreRect:far?level.rect:{value:new THREE.Vector4()}},side:THREE.DoubleSide,transparent:true,depthWrite:false});
   // El agua se subdivide igual que el relieve para que la curvatura terrestre las doble por igual
   // (con un solo cuadro por bloque, a 100 km el fondo marino asomaba sobre el agua).
   const waterSegments=far?level.segments:4,waterGeometry = new THREE.PlaneGeometry(size,size,waterSegments,waterSegments);waterGeometry.rotateX(-Math.PI/2);
@@ -266,18 +292,24 @@ function buildTile(current, record, level = null) {
 function refreshTile(current, record, item) {
   if (!item || item.version === record.gpuVersion) return;
   const values = item.texture.image.data;
+  // El umbral anterior queda en el canal a para la transición (fade de 0 a 1 en FADE_MS).
   for (let i=0;i<record.threshold.length;i++) {
+    values[i*4+3]=values[i*4+1];
     values[i*4+1]=Number.isFinite(record.threshold[i])?record.threshold[i]:65536;
     values[i*4+2]=record.sea[i];
   }
-  item.texture.needsUpdate=true;item.version=record.gpuVersion;
+  item.texture.needsUpdate=true;item.version=record.gpuVersion;item.fadeStart=performance.now();
 }
+const FADE_MS=700;
+function stepFade(item,now){if(item.fadeStart===undefined)return;const f=Math.max(0,Math.min(1,(now-item.fadeStart)/FADE_MS));item.water.material.uniforms.fade.value=f;if(f>=1)item.fadeStart=undefined;}
 function disposeTile(current,item) {
   item.disposed=true;current.scene.remove(item.terrain,item.water);
   item.terrain.geometry.dispose();item.terrain.material.dispose();
   item.water.geometry.dispose();item.water.material.dispose();item.texture.dispose();
 }
-function updateTerrainScene(current,point) {
+// Cede el hilo hasta el próximo cuadro (o la próxima tarea si la pestaña está oculta y no hay cuadros).
+const nextFrame=()=>new Promise(resolve=>document.hidden?setTimeout(resolve,0):requestAnimationFrame(()=>resolve()));
+async function updateTerrainScene(current,point) {
   // Rebase locally after each window shift to preserve precision and meter scale.
   current.origin={...point};current.position={x:0,z:0};current.span=tileSpan(latLng(point).lat);
   current.sample=terrainSampler(current.records);
@@ -287,19 +319,30 @@ function updateTerrainScene(current,point) {
   current.recordKeys=new Set(current.records.map(r=>r.coords.ux+'/'+r.coords.y));
   // Reuse meshes that keep their detail level and had all neighbours: only move them.
   // Only new tiles, tiles that change ring or that gained a neighbour are rebuilt.
-  const wanted=new Set(current.records);
+  // Todo se reubica ya (el origen cambió); los bloques a rehacer siguen visibles hasta tener reemplazo.
+  const wanted=new Set(current.records),rebuild=[];
   for(const [record,item] of current.tiles){
-    if(!wanted.has(record)||item.segments!==tileSegments(record,point)||!item.complete){disposeTile(current,item);current.tiles.delete(record);continue;}
+    if(!wanted.has(record)){disposeTile(current,item);current.tiles.delete(record);continue;}
+    if(item.segments!==tileSegments(record,point)||!item.complete)rebuild.push(record);
     const x=(record.coords.ux+0.5-point.x)*current.span,z=(record.coords.y+0.5-point.y)*current.span,scale=current.span/item.span;
     item.terrain.position.set(x,0,z);item.terrain.scale.set(scale,1,scale);item.water.position.set(x,0,z);item.water.scale.set(scale,1,scale);
   }
-  for(const record of current.records)if(!current.tiles.has(record))buildTile(current,record);
   placeLevels(current,point);
+  current.surface?.place(latLng(point));
   current.lowestSourceZoom=Math.min(...current.records.map(r=>r.dem.sourceZoom??DRONE_ZOOM));
   setViewDistance(current);
   current.windowCenter=Math.floor(point.x)+'/'+Math.floor(point.y);
-  view.dataset.terrainWindows=String((Number(view.dataset.terrainWindows)||0)+1);
   view.dataset.terrainBlocks=String(current.records.length);
+  // Construir un bloque de 128 segmentos toma varios ms: se arman los que quepan en ~10 ms por cuadro
+  // (siempre al menos uno) y se sigue en el próximo, primero los más cercanos al dron.
+  const near=record=>Math.max(Math.abs(record.coords.ux+0.5-point.x),Math.abs(record.coords.y+0.5-point.y));
+  const pending=[...current.records.filter(record=>!current.tiles.has(record)),...rebuild].sort((a,b)=>near(a)-near(b));
+  let start=performance.now();
+  for(const record of pending){
+    if(performance.now()-start>10){await nextFrame();if(current.disposed)return;start=performance.now();}
+    const old=current.tiles.get(record);buildTile(current,record);if(old)disposeTile(current,old);
+  }
+  view.dataset.terrainWindows=String((Number(view.dataset.terrainWindows)||0)+1);
 }
 // Cada nivel lejano no se dibuja dentro del rectángulo cubierto por el nivel interior.
 function recordsRect(records,factor,point,span){
@@ -324,11 +367,23 @@ function placeLevels(current,point){
     inner=recordsRect(level.records,level.factor,point,span);
   }
 }
+// Niebla y plano lejano según el terreno cargado y la distancia de dibujo (ajustes.js). La niebla no salta:
+// render() la acerca a este objetivo de a poco (fog.target); el plano lejano se fija de inmediato.
 function setViewDistance(current){
   const loaded=current.levels.filter(level=>level.tiles.size).at(-1);
-  const reach=loaded?loaded.radius*loaded.factor+loaded.factor/2:VIEW_RADIUS+0.5;
-  current.scene.fog.near=current.span*(loaded?Math.min(reach*0.25,12):2.2);current.scene.fog.far=current.span*(loaded?reach:reach+2);
-  current.camera.far=current.span*(reach+3)+15000;current.camera.updateProjectionMatrix();
+  const reach=(loaded?levelReach(loaded.radius,loaded.factor):VIEW_RADIUS+0.5)*current.span;
+  const target=viewDistance({reach,span:current.span,limitKm:AJ.dron.distanciaDibujoKm,start:AJ.niebla.inicio,end:AJ.niebla.fin,loaded:Boolean(loaded)});
+  current.fogTarget=target;
+  current.camera.far=Math.max(target.camera,current.scene.fog.far*1.05+3000);current.camera.updateProjectionMatrix();
+  view.dataset.viewKm=String(Math.round(target.far/1000));
+}
+// Acerca la niebla a su objetivo (≈ 0,6 s); también hace aparecer el paisaje desde la bruma al entrar.
+function easeFog(current,dt){
+  const fog=current.scene.fog,target=current.fogTarget;if(!target)return;
+  const k=1-Math.exp(-dt/0.6);
+  for(const key of ['near','far']){fog[key]+=(target[key]-fog[key])*k;if(Math.abs(target[key]-fog[key])<1)fog[key]=target[key];}
+  const needed=fog.far*1.05+3000;
+  if(current.camera.far<needed||(fog.far===target.far&&current.camera.far!==target.camera)){current.camera.far=Math.max(target.camera,needed);current.camera.updateProjectionMatrix();}
 }
 async function streamLevel(current,point,index) {
   const level=current.levels[index],inner=index?current.levels[index-1]:null;
@@ -378,20 +433,45 @@ async function streamTerrain(current,point) {
     if(session!==current||current.disposed){bridge.releaseDroneTerrain(added);return;}
     const actual={x:current.origin.x+current.position.x/current.span,y:current.origin.y+current.position.z/current.span};
     current.records=[...plan.keep,...added];
-    updateTerrainScene(current,actual);
-    current.windowCenter=center;
+    await updateTerrainScene(current,actual);
     bridge.releaseDroneTerrain(plan.remove);
+    if(current.disposed)return;
+    current.windowCenter=center;
   }catch(error){
     if(added.length)bridge.releaseDroneTerrain(added);
     if(session===current&&error.name!=='AbortError'){current.streamError=true;current.retryAfter=performance.now()+5000;}
   }finally{current.streaming=false;}
 }
+// Pantalla de carga: texto con avance en %. Al aparecer la vista se desvanece (carga.fundidoMs).
+// El avance tiene dos partes: el relieve propio (terrain) y lo que viene después (extra: imágenes o superficie 3D), cada
+// una de 0 a 1; mientras baja el relieve se muestra su texto, después el de la otra parte.
+function setLoadProgress(current,{text,terrain,extra,extraText}={}){
+  if(session!==current||current.surfaceFailed)return; // no tapa un mensaje de error
+  const p=current.load;
+  if(text!==undefined)p.text=text;if(extraText!==undefined)p.extraText=extraText;
+  if(Number.isFinite(terrain))p.terrain=Math.max(p.terrain,clamp(terrain,0,1));
+  if(Number.isFinite(extra))p.extra=Math.max(p.extra,clamp(extra,0,1));
+  const fraction=p.share*p.terrain+(1-p.share)*p.extra;
+  $('droneLoadingText').textContent=(p.terrain<1||!p.extraText?p.text:p.extraText)+' · '+Math.round(fraction*100)+' %';
+}
+function showLoading(){loading.classList.remove('revealing');loading.hidden=false;view.classList.add('is-loading');}
+function revealScene(current){
+  view.classList.remove('is-loading');current.revealed=true;
+  // El paisaje sale de la bruma: la niebla parte cerca y easeFog la lleva a su distancia.
+  const fog=current.scene.fog,target=current.fogTarget;
+  if(target&&AJ.carga.fundidoMs>0){fog.near=target.near*0.35;fog.far=Math.max(target.far*0.35,fog.near+1);}
+  if(AJ.carga.fundidoMs<=0||matchMedia('(prefers-reduced-motion: reduce)').matches){loading.hidden=true;return;}
+  loading.style.setProperty('--reveal-ms',AJ.carga.fundidoMs+'ms');loading.classList.add('revealing');
+  setTimeout(()=>{if(loading.classList.contains('revealing')){loading.classList.remove('revealing');loading.hidden=true;}},AJ.carga.fundidoMs);
+}
 async function openDrone(point) {
   if (session || !bridge.snapshot().ready) return;
+  flushCleanup();
   finishPlacement(); bridge.closePanels();
-  const current = {id:++sequence,controller:new AbortController(),records:[],tiles:new Map(),levels:[],position:{x:0,z:0},yaw:0,pitch:-0.18,lastTime:0,lastReadout:0,perf:{start:0,frames:0,time:0},frame:null,disposed:false,look:null,limited:false};
+  const current = {id:++sequence,controller:new AbortController(),records:[],tiles:new Map(),levels:[],position:{x:0,z:0},yaw:0,pitch:-0.18,lastTime:0,lastReadout:0,perf:{start:0,frames:0,time:0},frame:null,disposed:false,look:null,limited:false,load:{share:surface?0.5:0.6,terrain:0,extra:0,text:'',extraText:''},revealed:false,renderStart:0};
   view.dataset.tier=TIER;session=current;document.body.classList.add('drone-active');view.hidden=false;setFlightSettings(false);view.focus();
-  loading.hidden=false;view.classList.add('is-loading');setLoadingError(false);$('droneLoadingText').textContent='Cargando relieve y conexión del agua…';$('droneRetry').hidden=true;
+  showLoading();setLoadingError(false);setLoadProgress(current,{text:'Cargando relieve y conexión del agua…'});$('droneRetry').hidden=true;
+  delete view.dataset.surface;delete view.dataset.surfaceError;delete view.dataset.revealTimeout;
   warning.textContent='';readout.textContent='Preparando terreno…';$('droneUnderwater').hidden=true;
   try {
     threePromise ||= import('./vendor/three.module.min.js');
@@ -399,41 +479,56 @@ async function openDrone(point) {
     current.THREE=THREE;
     // Precisión de profundidad hasta ~120 km: Z invertido si la GPU lo permite (sin costo), si no, logarítmica.
     current.renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:false,...(supportsReversedDepth()?{reversedDepthBuffer:true}:{logarithmicDepthBuffer:true})});
-    current.renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.5));
+    current.renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,AJ.dron.resolucionMaxima));
     current.renderer.outputColorSpace=THREE.SRGBColorSpace;current.renderer.localClippingEnabled=true;
-    current.levels=FAR_LEVELS.map(level=>({...level,disabled:false,factor:2**(DRONE_ZOOM-level.zoom),records:[],tiles:new Map(),center:null,streaming:false,retryAfter:0,
-      clip:[new THREE.Plane(),new THREE.Plane(),new THREE.Plane(),new THREE.Plane()],rect:{value:new THREE.Vector4()}}));
+    current.origin=worldPoint(point.lat,point.lng);current.span=tileSpan(point.lat);
+    // Radio de cada anillo lejano: fijo (zoom 12) o el justo para la distancia de dibujo (zoom 10).
+    let innerReach=VIEW_RADIUS+0.5;
+    current.levels=FAR_LEVELS.map(level=>{const factor=2**(DRONE_ZOOM-level.zoom);
+      const radius=level.radius??farRadius(AJ.dron.distanciaDibujoKm,current.span,factor,innerReach,TIER);if(radius)innerReach=levelReach(radius,factor);
+      return {...level,radius,disabled:!radius,factor,records:[],tiles:new Map(),center:null,streaming:false,retryAfter:0,
+      clip:[new THREE.Plane(),new THREE.Plane(),new THREE.Plane(),new THREE.Plane()],rect:{value:new THREE.Vector4()}};});
+    view.dataset.farRadius=current.levels.map(l=>l.disabled?0:l.radius).join(',');
     current.renderer.debug.onShaderError=()=>{current.shaderError=true;};
     canvas.addEventListener('webglcontextlost',onContextLost);
     current.scene=new THREE.Scene();current.scene.background=new THREE.Color('#9dc3d0');
-    current.origin=worldPoint(point.lat,point.lng);current.span=tileSpan(point.lat);
     current.scene.fog=new THREE.Fog('#9dc3d0',current.span*2.2,current.span*(VIEW_RADIUS+2.5));
-    current.camera=new THREE.PerspectiveCamera(65,1,0.5,current.span*(VIEW_RADIUS+4)+15000);
+    current.camera=new THREE.PerspectiveCamera(AJ.dron.campoVision,1,0.5,current.span*(VIEW_RADIUS+4)+15000);
     current.scene.add(new THREE.HemisphereLight(0xe5f6ff,0x53616a,1.4));
     const sun=new THREE.DirectionalLight(0xfff4e5,1.5);sun.position.set(-1000,2000,-800);current.scene.add(sun);
-    current.uniforms={level:{value:0},opacity:{value:1},visibleWater:{value:1},depthColors:{value:0},contour:{value:0}};
+    current.uniforms={level:{value:0},opacity:{value:1},visibleWater:{value:1},depthColors:{value:0},contour:{value:0},hideSea:{value:surface?1:0}};
+    const unavailable=surface?.unavailable?.();if(unavailable){surfaceFailure(current,unavailable);return;}
+    // La superficie 3D arranca ya (módulo, credenciales y conjunto raíz) mientras baja el relieve propio.
+    if(surface)startSurface(current);
     const tiles=tileWindow(current.origin,START_RADIUS);
     // Match the map's detail level. The 3D view and 2D tiles share one FloodNetwork.
     bridge.prepareMap(point,DRONE_ZOOM);
     current.records=await bridge.loadDroneTerrain(tiles,current.controller.signal,count=>{
-      if(session===current)$('droneLoadingText').textContent=`Cargando relieve y agua · ${count}/${tiles.length} bloques`;
+      if(!current.surfaceFailed)setLoadProgress(current,{text:`Cargando relieve y agua · ${count}/${tiles.length} bloques`,terrain:count/tiles.length*0.9});
     });
     if(session!==current)return;
-    view.dataset.terrainWindows='0';updateTerrainScene(current,current.origin);
+    view.dataset.terrainWindows='0';await updateTerrainScene(current,current.origin);if(session!==current)return;
     current.windowCenter=null; // carga el anillo exterior en segundo plano
-    $('droneLoadingText').textContent='Preparando imágenes del terreno…';
-    await Promise.all([...current.tiles.values()].map(item=>item.imageryReady));
-    if(session!==current)return;
-    view.dataset.texturedTiles=String([...current.tiles.values()].filter(item=>item.terrain.material.map).length);
+    if(!current.surfaceFailed)setLoadProgress(current,{terrain:1});
+    if(!surface){
+      setLoadProgress(current,{extraText:'Preparando imágenes del terreno…'});
+      const items=[...current.tiles.values()];let done=0;
+      await Promise.all(items.map(item=>item.imageryReady.then(()=>{done++;setLoadProgress(current,{extra:done/items.length});})));
+      if(session!==current)return;
+      view.dataset.texturedTiles=String([...current.tiles.values()].filter(item=>item.terrain.material.map).length);
+    }
     const overOcean=current.sample(current.origin)?.sea;
     let best=overOcean?-Infinity:Infinity;
     for(let i=0;i<16;i++){const angle=i*Math.PI/8,probe=current.sample({x:current.origin.x+Math.sin(angle)*0.3,y:current.origin.y-Math.cos(angle)*0.3});
       if(probe&&(overOcean?probe.ground>best:probe.ground<best)){best=probe.ground;current.yaw=angle;}}
     current.lowestSourceZoom=Math.min(...current.records.map(r=>r.dem.sourceZoom??DRONE_ZOOM));
-    resize();current.lastTime=performance.now()-40;current.frame=requestAnimationFrame(render);
+    if(current.surfaceFailed)return;
+    resize();current.lastTime=performance.now()-40;current.renderStart=performance.now();current.frame=requestAnimationFrame(render);
   } catch(error) {
     if(session!==current||error.name==='AbortError')return;
     console.error('Drone scene:',error);
+    // La superficie 3D que arrancó en paralelo se detiene (live() pasa a falso).
+    current.surfaceFailed=true;current.surface?.stop();current.surface=null;
     bridge.releaseDroneTerrain(current.records);current.records=[];
     $('droneLoadingText').textContent=current.renderer?'No se pudo cargar el terreno. Puedes reintentar o volver al mapa.':'La vista 3D requiere WebGL 2. Puedes seguir usando el mapa.';
     $('droneRetry').hidden=!current.renderer;
@@ -441,7 +536,7 @@ async function openDrone(point) {
 }
 function onContextLost(event) {
   event.preventDefault();if(!session)return;
-  bridge.pause();keys.clear();loading.hidden=false;
+  bridge.pause();keys.clear();loading.classList.remove('revealing');loading.hidden=false;
   $('droneLoadingText').textContent='Se perdió la vista 3D. Vuelve al mapa y abre el dron otra vez.';
   $('droneRetry').hidden=true;
   if(session.frame)cancelAnimationFrame(session.frame);
@@ -453,12 +548,15 @@ function resize() {
   session.camera.aspect=view.clientWidth/view.clientHeight;session.camera.updateProjectionMatrix();
 }
 function render(now) {
-  const current=session;if(!current?.sample||current.disposed)return;
-  if(now-current.lastTime<1000/30){current.frame=requestAnimationFrame(render);return;}
+  const current=session;if(!current?.sample||current.disposed||current.surfaceFailed)return;
+  // Tope de cuadros por segundo (ajustes.js); 1 ms de holgura para no saltarse cuadros por redondeo.
+  if(now-current.lastTime<1000/AJ.dron.cuadrosMaximos-1){current.frame=requestAnimationFrame(render);return;}
   const interval=now-current.lastTime,dt=Math.min(interval/1000,0.05);current.lastTime=now;
-  const forward=Number(keys.has('KeyW')||keys.has('ArrowUp'))-Number(keys.has('KeyS')||keys.has('ArrowDown'))-sticks.move.y;
-  const right=Number(keys.has('KeyD')||keys.has('ArrowRight'))-Number(keys.has('KeyA')||keys.has('ArrowLeft'))+sticks.move.x;
-  current.yaw+=sticks.look.x*1.6*dt;current.pitch=clamp(current.pitch-sticks.look.y*1.2*dt,-1.45,1.45);
+  // Con la pantalla de carga visible el dron no se mueve (la escena ya se dibuja para cargar detalle).
+  const loadingNow=view.classList.contains('is-loading'),hold=loadingNow?0:1;
+  const forward=hold*(Number(keys.has('KeyW')||keys.has('ArrowUp'))-Number(keys.has('KeyS')||keys.has('ArrowDown'))-sticks.move.y);
+  const right=hold*(Number(keys.has('KeyD')||keys.has('ArrowRight'))-Number(keys.has('KeyA')||keys.has('ArrowLeft'))+sticks.move.x);
+  current.yaw+=hold*sticks.look.x*1.6*dt;current.pitch=clamp(current.pitch-hold*sticks.look.y*1.2*dt,-1.45,1.45);
   const previousPosition=current.position;
   current.position=moveDrone(current.position,{forward,right,yaw:current.yaw,speed:options.speed,dt,bounds:current.bounds});
   const actualSpeed=Math.hypot(current.position.x-previousPosition.x,current.position.z-previousPosition.z)/Math.max(.001,dt);
@@ -466,7 +564,9 @@ function render(now) {
   streamTerrain(current,point);for(let i=0;i<current.levels.length;i++)streamLevel(current,point,i);
   const sample=current.sample(point);if(!sample){closeDrone();return;}
   let ground=sample.sea?0:sample.ground;
-  if(keys.has('KeyQ')||keys.has('KeyE')||verticalInput) {
+  // Con otra superficie 3D, el suelo es lo más alto entre el relieve propio y esa superficie.
+  if(current.surface){const top=current.surface.groundAt(current.position.x,current.position.z,(lastFlight?.y??ground)+500,now);if(Number.isFinite(top))ground=Math.max(ground,top);}
+  if(!loadingNow&&(keys.has('KeyQ')||keys.has('KeyE')||verticalInput)) {
     const climb=clamp(Number(keys.has('KeyE'))-Number(keys.has('KeyQ'))+verticalInput,-1,1)*options.climb*dt;
     // En altitud fija se parte de la altura real del dron: si va rozando el suelo, bajar no hace nada
     // y subir lo eleva de inmediato (antes el valor seguía bajando bajo tierra sin efecto visible).
@@ -482,25 +582,38 @@ function render(now) {
   current.uniforms.level.value=snapshot.level;current.uniforms.opacity.value=snapshot.waterOpacity;
   current.uniforms.visibleWater.value=Number(snapshot.showWater);current.uniforms.depthColors.value=Number(snapshot.depthColors);
   current.uniforms.contour.value=Number(snapshot.showContour);
-  for(const tiles of [current.tiles,...current.levels.map(l=>l.tiles)])for(const [record,item] of tiles){refreshTile(current,record,item);item.water.position.y=snapshot.level;}
+  // Reenviar el agua de un bloque a la GPU cuesta ~1–3 ms: hasta ~6 ms por cuadro, el resto en el siguiente.
+  const refreshUntil=performance.now()+6;
+  for(const tiles of [current.tiles,...current.levels.map(l=>l.tiles)])for(const [record,item] of tiles){if(performance.now()<refreshUntil)refreshTile(current,record,item);stepFade(item,now);item.water.position.y=snapshot.level;}
   const isWet=flooded(snapshot.level,sample.ground,sample.threshold,sample.sea);
   const underwater=isWet&&y<snapshot.level;
   $('droneUnderwater').hidden=!underwater;
+  current.surface?.update(now);
+  easeFog(current,dt);
   current.renderer.render(current.scene,current.camera);
   adaptReach(current,now,interval);
-  if(!current.shaderError&&view.classList.contains('is-loading')){loading.hidden=true;view.classList.remove('is-loading');}
+  // Se muestra la vista cuando la superficie 3D (si hay) tiene su primera imagen, o tras carga.esperaMaximaS.
+  if(loadingNow&&!current.shaderError&&!current.revealed&&(!current.surfacePending||now-current.renderStart>AJ.carga.esperaMaximaS*1000)){
+    if(current.surfacePending)view.dataset.revealTimeout='1';
+    revealScene(current);
+  }
   if(current.shaderError){onContextLost({preventDefault(){}});$('droneLoadingText').textContent='Este dispositivo no pudo dibujar el agua 3D. Vuelve al mapa.';return;}
   if(now-current.lastReadout>150){current.lastReadout=now;const ll=latLng(point);
     readout.textContent=`${ll.lat.toFixed(5)}°, ${ll.lng.toFixed(5)}°`;
     $('droneHeightValue').textContent=fmt(y-ground)+' m';$('droneSeaValue').textContent=fmt(y)+' m';
     $('droneSpeedValue').textContent=fmt(actualSpeed)+' m/s';$('droneGroundValue').textContent=fmt(sample.ground)+' m';
-    $('droneGroundValue').previousElementSibling.textContent=sample.sea?'Fondo · mar':'Terreno · mar';$('droneGroundValue').previousElementSibling.dataset.short=sample.sea?'Fondo':'Terreno';
+    $('droneGroundValue').previousElementSibling.textContent=sample.sea?'Fondo marino':'Altitud del suelo';$('droneGroundValue').previousElementSibling.dataset.short=sample.sea?'Fondo':'Suelo';
     $('droneWaterValue').textContent='+'+fmt(snapshot.level)+' m';$('droneClearanceValue').textContent=isWet?fmt(y-snapshot.level)+' m':'Sin agua';
     const heading=((current.yaw*180/Math.PI)%360+360)%360,cardinal=['N','NE','E','SE','S','SO','O','NO'][Math.round(heading/45)%8];
     $('droneHeading').textContent=cardinal+' · '+String(Math.round(heading)%360).padStart(3,'0')+'°';
     window.dispatchEvent(new CustomEvent('deepterra:drone-telemetry',{detail:{altitude:y,level:snapshot.level,ground:sample.ground,sea:Boolean(sample.sea),heading}}));
     warning.textContent=current.streamError?'No se pudo ampliar el terreno. Reintentando…':current.position.limited?'Esperando terreno para continuar el vuelo…':current.streaming?'Cargando más terreno y conexión del agua…':current.lowestSourceZoom<DRONE_ZOOM?'Se usa parte del terreno de menor resolución.':'';
     warning.hidden=!warning.textContent;
+    // Tipo de aviso (error, carga o dato) y «cargando» aparte: la interfaz puede mostrar la carga como un
+    // círculo chico (#droneBusy) en vez del aviso de texto.
+    const busy=Boolean(!current.streamError&&(current.position.limited||current.streaming));
+    warning.dataset.kind=current.streamError?'error':busy?'loading':warning.textContent?'info':'';
+    if(busy!==(view.dataset.busy==='1')){if(busy)view.dataset.busy='1';else delete view.dataset.busy;const status=$('droneBusy')?.firstElementChild;if(status)status.textContent=busy?'Cargando más terreno…':'';}
   }
   current.frame=requestAnimationFrame(render);
 }
@@ -521,27 +634,82 @@ function adaptReach(current,now,interval){
     bridge.releaseDroneTerrain(level.records);level.records=[];view.dataset['farBlocks'+level.zoom]='0';placeLevels(current,current.origin);setViewDistance(current);}
   view.dataset.farRadius=current.levels.map(l=>l.disabled?0:l.radius).join(',');
 }
+// Al salir, primero se oculta la vista (respuesta inmediata al botón) y lo pesado va después:
+// 1) en el cuadro siguiente se ubica y redibuja el mapa 2D; 2) en ratos libres se liberan mallas,
+// texturas, la superficie 3D de la extensión y el renderizador. Si el dron se vuelve a abrir antes,
+// openDrone termina esa limpieza de inmediato (flushCleanup) para no compartir el lienzo a medias.
+let cleanup=null;
+function flushCleanup(){while(cleanup)cleanup.run(Infinity);}
+function scheduleCleanup(current){
+  // La superficie de la extensión se detiene primero: deja de pedir piezas lo antes posible.
+  const steps=[],handle=current.surface;current.surface=null;
+  if(handle)steps.push(()=>handle.stop());
+  for(const item of current.tiles.values())steps.push(()=>disposeTile(current,item));
+  for(const level of current.levels)for(const item of level.tiles.values())steps.push(()=>disposeTile(current,item));
+  steps.push(()=>{for(const task of current.imageryCache?.values()||[])task.then(texture=>{texture?.image?.close?.();texture?.dispose();});});
+  // Reuse the canvas context on the next entry. Forcing context loss here
+  // would make a quick second drop fail before the browser restores it.
+  steps.push(()=>current.renderer?.dispose());
+  const job={run(budget){const start=performance.now();while(steps.length&&performance.now()-start<budget){try{steps.shift()();}catch(error){console.error('Drone cleanup:',error);}}if(!steps.length&&cleanup===job)cleanup=null;}};
+  cleanup=job;
+  const idle=window.requestIdleCallback?callback=>requestIdleCallback(callback,{timeout:500}):callback=>setTimeout(callback,16);
+  const tick=()=>{if(cleanup!==job)return;job.run(8);if(cleanup===job)idle(tick);};
+  return tick;
+}
 function closeDrone() {
   const current=session;if(!current)return;
   session=null;current.disposed=true;current.controller.abort();keys.clear();resetSticks();
   if(current.frame)cancelAnimationFrame(current.frame);
   canvas.removeEventListener('webglcontextlost',onContextLost);
   if(document.pointerLockElement===canvas)document.exitPointerLock();
+  // Los bloques dejan de recibir la conexión del agua ya (es barato); sus mallas se liberan después.
   bridge.releaseDroneTerrain(current.records);for(const level of current.levels)bridge.releaseDroneTerrain(level.records);
-  for(const item of current.tiles.values())disposeTile(current,item);
-  for(const level of current.levels)for(const item of level.tiles.values())disposeTile(current,item);
-  if(current.sample)bridge.prepareMap(latLng({x:current.origin.x+current.position.x/current.span,y:current.origin.y+current.position.z/current.span}),DRONE_ZOOM);
-  // Reuse the canvas context on the next entry. Forcing context loss here
-  // would make a quick second drop fail before the browser restores it.
-  for(const task of current.imageryCache?.values()||[])task.then(texture=>{texture?.image?.close?.();texture?.dispose();});
-  current.renderer?.dispose();
+  const exit=current.sample?latLng({x:current.origin.x+current.position.x/current.span,y:current.origin.y+current.position.z/current.span}):null;
+  const tick=scheduleCleanup(current);
   view.hidden=true;document.body.classList.remove('drone-active');
   setFlightSettings(false);
-  positionDock();bridge.refreshMap();button.focus();
+  positionDock();button.focus();
+  requestAnimationFrame(()=>setTimeout(()=>{
+    if(!session){if(exit)bridge.prepareMap(exit,DRONE_ZOOM);bridge.refreshMap();}
+    setTimeout(tick,0);
+  },0));
+}
+function setLoadingError(on){loading.classList.toggle('failed',on);if(!on){$('droneLoadingDetail').hidden=true;$('droneLoadingDetail').textContent='';}}
+// Superficie 3D de una extensión: start() devuelve {place, groundAt, update, stop}; avisa con ready() o fail().
+// ready() = ya tiene una primera imagen aceptable (la pantalla de carga espera eso, como mucho
+// carga.esperaMaximaS una vez listo el relieve propio). Opcional: progress(0–1) para el % de la carga
+// y status(texto). start() se llama mientras aún baja el relieve propio: terrainAt devuelve null hasta
+// tenerlo. Si falla no se dibuja el relieve propio en su lugar: la vista muestra el error.
+function surfaceFailure(current,error){
+  if(session!==current||current.surfaceFailed)return;
+  current.surfaceFailed=true;current.surfacePending=false;current.surface?.stop();current.surface=null;
+  if(current.frame){cancelAnimationFrame(current.frame);current.frame=null;}
+  keys.clear();resetSticks();
+  view.dataset.surface='error';view.dataset.surfaceError=error.kind||'';
+  showLoading();setLoadingError(true);
+  $('droneLoadingText').textContent=error.title;
+  $('droneLoadingDetail').textContent=error.detail||'';$('droneLoadingDetail').hidden=!error.detail;
+  $('droneRetry').hidden=error.retry===false;
+}
+async function startSurface(current){
+  current.surfacePending=true;view.dataset.surface='loading';
+  const live=()=>session===current&&!current.surfaceFailed;
+  try{
+    const handle=await surface.start({THREE:current.THREE,scene:current.scene,camera:current.camera,renderer:current.renderer,origin:latLng(current.origin),live,
+      // Alturas del relieve propio en el marco local (x este, z sur, m): {ground, sea} o null.
+      terrainAt:(x,z)=>{const cell=current.sample?.({x:current.origin.x+x/current.span,y:current.origin.y+z/current.span});return cell?{ground:cell.ground,sea:Boolean(cell.sea)}:null;},
+      // Mallas de agua vigentes (cercanas y lejanas) y sus uniformes compartidos (nivel, opacidad, visibilidad…).
+      water:()=>({meshes:[current.tiles,...current.levels.map(l=>l.tiles)].flatMap(tiles=>[...tiles.values()].map(item=>item.water)),uniforms:current.uniforms}),
+      status:text=>{if(live())setLoadProgress(current,{extraText:text});},
+      progress:fraction=>{if(live())setLoadProgress(current,{extra:fraction});},
+      ready:()=>{if(!live())return;current.surfacePending=false;view.dataset.surface='ready';},
+      fail:error=>surfaceFailure(current,error)});
+    if(!live()){handle?.stop();return;}
+    current.surface=handle;
+  }catch(error){console.error('Drone surface:',error);surfaceFailure(current,{kind:'error',title:'No se pudo cargar la vista 3D'});}
 }
 $('droneExit').addEventListener('click',closeDrone);
 $('droneCancelLoad').addEventListener('click',closeDrone);
-function setLoadingError(on){loading.classList.toggle('failed',on);if(!on){$('droneLoadingDetail').hidden=true;$('droneLoadingDetail').textContent='';}}
 $('droneRetry').addEventListener('click',()=>{if(!session)return;const point=latLng(session.origin);closeDrone();openDrone(point);});
 function setFlightSettings(open){if(open)setFilter(false);$('droneSettings').hidden=!open;$('droneSettingsToggle').setAttribute('aria-expanded',String(open));if(!open&&document.activeElement?.closest('#droneSettings'))document.activeElement.blur();}
 $('droneShowTelemetry').addEventListener('change',event=>view.classList.toggle('hide-telemetry',!event.target.checked));
@@ -558,6 +726,11 @@ function setAltitudeMode(mode){
   for(const input of [fixedInput,altitudeInput])input.dispatchEvent(new Event('deepterra:sync'));
 }
 for(const button of document.querySelectorAll('[data-alt-mode]'))button.addEventListener('click',()=>setAltitudeMode(button.dataset.altMode));
+// Valores iniciales y topes de los campos según ajustes.js (ui.js lee data-max del deslizador al usarlo).
+for(const [input,value,max] of [[speedInput,options.speed,MAX_SPEED],[climbInput,options.climb,MAX_SPEED],[altitudeInput,options.altitude,2000],[fixedInput,options.fixed,MAX_FIXED]]){
+  input.value=value;input.max=max;const range=document.querySelector(`.sqrt-range[data-target="${input.id}"]`);if(range)range.dataset.max=max;
+  input.dispatchEvent(new Event('deepterra:sync'));
+}
 for(const [input,key,min,max] of [[speedInput,'speed',1,MAX_SPEED],[climbInput,'climb',1,MAX_SPEED],[altitudeInput,'altitude',2,2000],[fixedInput,'fixed',2,MAX_FIXED]]) {
   input.addEventListener('input',()=>{const value=Number(input.value);if(input.value!==''&&Number.isFinite(value))options[key]=clamp(value,min,max);});
   input.addEventListener('change',()=>{options[key]=clamp(Number(input.value)||options[key],min,max);input.value=options[key];});
@@ -580,14 +753,27 @@ document.addEventListener('keydown',event=>{
 document.addEventListener('keyup',event=>keys.delete(event.code));
 window.addEventListener('blur',()=>{keys.clear();if(session)session.look=null;cancelGesture();finishPlacement();});
 document.addEventListener('visibilitychange',()=>{if(document.hidden){keys.clear();if(session)bridge.pause();}});
+// Joysticks dinámicos (la interfaz pone la clase sticks-dynamic, p. ej. el teléfono en horizontal): al tocar
+// la vista, el joystick aparece centrado en el dedo (mitad izquierda «Volar», mitad derecha «Mirar»), lo
+// sigue y se oculta al soltar. Usa la misma lógica de los joysticks fijos. El mouse sigue mirando al arrastrar.
+const stickControls={};
 canvas.addEventListener('pointerdown',event=>{
+  if(view.classList.contains('sticks-dynamic')&&event.pointerType!=='mouse'){
+    event.preventDefault();if(!session?.sample)return;view.focus({preventScroll:true});
+    const box=view.getBoundingClientRect(),top=document.querySelector('.drone-topbar')?.getBoundingClientRect().bottom??0;
+    if(event.clientY<top)return;
+    const stick=stickControls[event.clientX-box.left<box.width/2?'move':'look'];
+    if(!stick||stick.busy())return;
+    stick.el.style.setProperty('--stick-x',(event.clientX-box.left)+'px');stick.el.style.setProperty('--stick-y',(event.clientY-box.top)+'px');
+    stick.start(event);return;
+  }
   if(!session?.sample||event.isPrimary===false||event.button!==0)return;
   event.preventDefault();view.focus();session.look={id:event.pointerId,x:event.clientX,y:event.clientY};canvas.setPointerCapture(event.pointerId);
 });
 canvas.addEventListener('pointermove',event=>{
   if(!session?.look||event.pointerId!==session.look.id)return;
   const dx=event.clientX-session.look.x,dy=event.clientY-session.look.y;
-  session.yaw+=dx*.0035;session.pitch=clamp(session.pitch-dy*.0035,-1.45,1.45);
+  const k=.0035*AJ.dron.sensibilidadMirar;session.yaw+=dx*k;session.pitch=clamp(session.pitch-dy*k,-1.45,1.45);
   session.look.x=event.clientX;session.look.y=event.clientY;
 });
 const releaseLook=()=>{if(session)session.look=null;};
@@ -595,9 +781,12 @@ canvas.addEventListener('pointerup',releaseLook);canvas.addEventListener('pointe
 for(const [id,kind] of [['droneMoveStick','move'],['droneLookStick','look']]){
  const el=$(id),knob=el.querySelector('.stick-knob');let pointer=null;
  const update=event=>{const box=el.getBoundingClientRect(),radius=box.width*.32,dx=event.clientX-box.left-box.width/2,dy=event.clientY-box.top-box.height/2,norm=Math.max(radius,Math.hypot(dx,dy));sticks[kind].x=dx/norm;sticks[kind].y=dy/norm;knob.style.transform=`translate(calc(-50% + ${dx/norm*radius}px),calc(-50% + ${dy/norm*radius}px))`;};
- el.addEventListener('pointerdown',event=>{if(pointer!==null||!session?.sample)return;event.preventDefault();event.stopPropagation();pointer=event.pointerId;el.setPointerCapture(pointer);update(event);});
+ // is-active: el joystick está en uso (los dinámicos solo se ven mientras tanto).
+ const start=event=>{pointer=event.pointerId;el.classList.add('is-active');syncSticksHeld();try{el.setPointerCapture(pointer);}catch{}update(event);};
+ stickControls[kind]={el,start,busy:()=>pointer!==null};
+ el.addEventListener('pointerdown',event=>{if(pointer!==null||!session?.sample)return;event.preventDefault();event.stopPropagation();start(event);});
  el.addEventListener('pointermove',event=>{if(pointer!==event.pointerId)return;event.preventDefault();update(event);});
- const release=event=>{if(pointer!==event.pointerId)return;pointer=null;sticks[kind].x=sticks[kind].y=0;knob.style.transform='translate(-50%,-50%)';};
+ const release=event=>{if(pointer!==event.pointerId)return;pointer=null;el.classList.remove('is-active');syncSticksHeld();sticks[kind].x=sticks[kind].y=0;knob.style.transform='translate(-50%,-50%)';};
  for(const type of ['pointerup','pointercancel','lostpointercapture'])el.addEventListener(type,release);
  for(const type of ['contextmenu','selectstart','dragstart'])el.addEventListener(type,event=>event.preventDefault());
  el.addEventListener('touchstart',event=>event.preventDefault(),{passive:false});
@@ -613,10 +802,22 @@ for(const type of ['contextmenu','selectstart','dragstart'])altitudeStick.addEve
 altitudeStick.addEventListener('touchstart',event=>event.preventDefault(),{passive:false});
 altitudeStick.addEventListener('keydown',event=>{if(['ArrowUp','ArrowDown','Home'].includes(event.key)){event.preventDefault();setAltitudeInput(event.key==='ArrowUp'?1:event.key==='ArrowDown'?-1:0);}});
 altitudeStick.addEventListener('keyup',resetAltitudeStick);altitudeStick.addEventListener('blur',resetAltitudeStick);
+// Botones Subir/Bajar (teléfono en horizontal): mantener presionado sube o baja sin parar (igual que E/Q).
+for(const [id,dir] of [['droneUp',1],['droneDown',-1]]){
+  const btn=$(id);if(!btn)continue;let held=null;
+  const press=who=>{if(!session?.sample)return;held=who;btn.classList.add('is-pressed');verticalInput=dir;verticalPointer=null;};
+  const lift=who=>{if(held===null||(who!==undefined&&who!==held))return;held=null;btn.classList.remove('is-pressed');if(verticalInput===dir)verticalInput=0;};
+  btn.addEventListener('pointerdown',event=>{if(held!==null||event.button>0)return;event.preventDefault();event.stopPropagation();try{btn.setPointerCapture(event.pointerId);}catch{}press(event.pointerId);});
+  for(const type of ['pointerup','pointercancel','lostpointercapture'])btn.addEventListener(type,event=>lift(event.pointerId));
+  btn.addEventListener('keydown',event=>{if(event.key!=='Enter'&&event.key!==' ')return;event.preventDefault();event.stopPropagation();if(!event.repeat)press('key');});
+  btn.addEventListener('keyup',event=>{if(event.key==='Enter'||event.key===' ')lift('key');});
+  btn.addEventListener('blur',()=>lift());
+  for(const type of ['contextmenu','selectstart','dragstart'])btn.addEventListener(type,event=>event.preventDefault());
+  btn.addEventListener('touchstart',event=>event.preventDefault(),{passive:false});
+}
 window.addEventListener('resize',resize);
 window.addEventListener('deepterra:frame',positionDock);
 positionDock();
 
 // "Volar aquí" from the inspection card opens the drone at that point.
 window.addEventListener('deepterra:fly-to',event=>{if(event.detail)openDrone(event.detail);});
-window.addEventListener('deepterra:portrait-required',()=>{keys.clear();resetSticks();cancelGesture();finishPlacement();});

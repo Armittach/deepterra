@@ -36,5 +36,8 @@ Iconos de Lucide, licencia ISC. Biblioteca y licencia incluidas en dist/vendor/.
 ## Three.js
 Three.js 0.180.0 (MIT), copyright Three.js Authors. Bundled locally for the optional drone 3D view. Full license: dist/vendor/THREE-LICENSE.txt (vendor/THREE-LICENSE.txt from the published app). https://threejs.org/
 
+## Geist y Geist Mono
+Tipografías de Vercel, licencia SIL Open Font License 1.1. Incluidas en la app (dist/vendor/fonts/); licencia: dist/vendor/GEIST-LICENSE.txt. https://vercel.com/font
+
 
 Copernicus DEM GLO-30 — fuente de elevación por defecto para la simulación y el relieve, servida como piezas Terrarium por Mapterhorn (https://mapterhorn.com). Produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved. The organisations in charge of the Copernicus programme by law or by delegation do not incur any liability for any use of the Copernicus WorldDEM-30. Mapzen/Tilezen Terrain Tiles (AWS) queda solo como comparación con ?relieve=aws.

@@ -1,4 +1,4 @@
-# Cabeceras de seguridad (Cloudflare Pages u otro hosting compatible).
+# Cabeceras de seguridad de los archivos de la app.
 /*
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
@@ -8,3 +8,7 @@
 
 /map-config.js
   Cache-Control: no-store
+
+# Ajustes editables (docs/ajustes.md): el navegador pregunta siempre si cambiaron, sin cambiar ?v=.
+/ajustes.js
+  Cache-Control: no-cache

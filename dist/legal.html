@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#07131b">
+<title>DeepTerra · Privacidad y condiciones</title>
+<meta name="description" content="Privacidad y condiciones de uso de DeepTerra. / DeepTerra privacy and terms of use.">
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+<style>
+@font-face{font-family:'Geist';src:url(vendor/fonts/Geist-Regular.woff2) format('woff2');font-weight:400;font-display:swap}
+@font-face{font-family:'Geist';src:url(vendor/fonts/Geist-SemiBold.woff2) format('woff2');font-weight:600;font-display:swap}
+:root{color-scheme:dark;--ink:#07131b;--text:#eaf4f6;--soft:#c3d3d9;--muted:#93a9b2;--accent:#5eead4;--line:rgba(255,255,255,.1)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ink);color:var(--text);font:16px/1.6 Geist,system-ui,-apple-system,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased}
+main{max-width:720px;margin:0 auto;padding:32px 20px 64px}
+header{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding-bottom:20px;border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:600;font-size:20px;color:var(--text);text-decoration:none}
+.brand svg{width:26px;height:26px}
+.lang{display:flex;gap:4px;padding:4px;border-radius:12px;border:1px solid var(--line)}
+.lang button{min-width:44px;height:36px;border:0;border-radius:9px;background:none;color:var(--soft);font:600 14px Geist,sans-serif;cursor:pointer}
+.lang button[aria-pressed=true]{background:rgba(94,234,212,.16);color:var(--accent)}
+h1{font-size:30px;line-height:1.2;margin:32px 0 6px;font-weight:600;letter-spacing:-.3px}
+h2{font-size:19px;margin:32px 0 6px;font-weight:600}
+p,li{color:var(--soft)}
+ul{padding-left:22px}
+li{margin:6px 0}
+a{color:var(--accent)}
+.updated{color:var(--muted);font-size:14px;margin:0}
+.back{display:inline-block;margin-top:40px}
+[hidden]{display:none!important}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <a class="brand" href="./"><svg class="mark" viewBox="0 0 64 64" fill="none" aria-hidden="true"><path d="M6.3 36q6.43-5 12.85 0t12.85 0 12.85 0 12.85 0A26 26 0 0 1 6.3 36z" fill="#38bdf8"/><circle cx="32" cy="32" r="26" stroke="#5eead4" stroke-width="5"/></svg>DeepTerra</a>
+  <div class="lang" role="group" aria-label="Idioma / Language">
+    <button type="button" data-lang="es" aria-pressed="true">ES</button>
+    <button type="button" data-lang="en" aria-pressed="false">EN</button>
+  </div>
+</header>
+
+<article lang="es" data-lang-block="es">
+  <h1>Privacidad y condiciones de uso</h1>
+  <p class="updated">Última actualización: 13 de octubre de 2026</p>
+
+  <h2>Qué es DeepTerra</h2>
+  <p>DeepTerra es un simulador visual de inundación: muestra qué zonas quedarían bajo el agua si el nivel del mar subiera. Se usa gratis, sin crear una cuenta.</p>
+
+  <h2>Qué datos usamos</h2>
+  <ul>
+    <li><strong>No pedimos datos personales</strong> ni usamos cookies de seguimiento o publicidad.</li>
+    <li><strong>Preferencias en tu navegador:</strong> el idioma, el mapa de fondo, las capas elegidas y si ya viste la guía se guardan solo en tu navegador (almacenamiento local). Puedes borrarlos limpiando los datos del sitio.</li>
+    <li><strong>Tu ubicación:</strong> solo si tocas «Mi ubicación» y lo autorizas en el navegador. Se usa para centrar el mapa en tu dispositivo; no se guarda ni se nos envía.</li>
+    <li><strong>País aproximado:</strong> al abrir la app se calcula tu país a partir de tu dirección IP, solo para elegir el idioma. No se guarda.</li>
+    <li><strong>Búsquedas:</strong> el texto que escribes en el buscador se envía al servicio de búsqueda de lugares (abajo) para encontrar el sitio.</li>
+  </ul>
+
+  <h2>Servicios externos</h2>
+  <p>Para dibujar el mapa y calcular el agua, tu navegador pide datos directamente a estos servicios, que reciben tu dirección IP como cualquier sitio web:</p>
+  <ul>
+    <li><a href="https://www.maptiler.com/privacy-policy/" target="_blank" rel="noopener">MapTiler</a>: mapas de fondo, imagen satelital y búsqueda de lugares.</li>
+    <li><a href="https://osmfoundation.org/wiki/Privacy_Policy" target="_blank" rel="noopener">OpenStreetMap y Nominatim</a>: mapa y búsqueda de respaldo.</li>
+    <li><a href="https://mapterhorn.com/" target="_blank" rel="noopener">Mapterhorn</a> y <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noopener">AWS Open Data</a>: datos de elevación del terreno y del fondo marino.</li>
+  </ul>
+
+  <h2>Condiciones de uso</h2>
+  <ul>
+    <li><strong>Es una simulación aproximada</strong>, hecha para explorar y aprender. Solo usa la altura del terreno: no considera mareas, olas, corrientes, diques ni edificios, y no predice tsunamis, marejadas ni daños.</li>
+    <li><strong>No la uses para decisiones de seguridad</strong>, como saber si una propiedad está en riesgo o si hay que evacuar. Para eso, sigue a las autoridades de tu zona.</li>
+    <li>La app se ofrece «tal cual», sin garantías de exactitud ni de disponibilidad.</li>
+    <li>El código de DeepTerra es abierto, bajo <a href="LICENSE" target="_blank" rel="noopener">licencia MIT</a>. Los mapas y datos de terceros siguen sus propias licencias (ver «Datos y créditos» en la app).</li>
+  </ul>
+
+  <h2>Contacto</h2>
+  <p>Preguntas o comentarios: abre un tema en <a href="https://github.com/Armittach/deepterra/issues" target="_blank" rel="noopener">GitHub</a>.</p>
+  <a class="back" href="./">← Volver a DeepTerra</a>
+</article>
+
+<article lang="en" data-lang-block="en" hidden>
+  <h1>Privacy and terms of use</h1>
+  <p class="updated">Last updated: October 13, 2026</p>
+
+  <h2>What DeepTerra is</h2>
+  <p>DeepTerra is a visual flood simulator: it shows which areas would end up under water if the sea level rose. It is free to use, with no account.</p>
+
+  <h2>What data we use</h2>
+  <ul>
+    <li><strong>We don't ask for personal data</strong> and we don't use tracking or advertising cookies.</li>
+    <li><strong>Preferences in your browser:</strong> your language, base map, chosen layers and whether you've seen the tour are saved only in your browser (local storage). You can remove them by clearing the site's data.</li>
+    <li><strong>Your location:</strong> only if you tap “My location” and allow it in your browser. It's used to center the map on your device; it isn't stored or sent to us.</li>
+    <li><strong>Approximate country:</strong> when the app opens, your country is estimated from your IP address, only to choose the language. It isn't stored.</li>
+    <li><strong>Searches:</strong> what you type in the search box is sent to the place-search service (below) to find the place.</li>
+  </ul>
+
+  <h2>Third-party services</h2>
+  <p>To draw the map and compute the water, your browser requests data directly from these services, which receive your IP address like any website:</p>
+  <ul>
+    <li><a href="https://www.maptiler.com/privacy-policy/" target="_blank" rel="noopener">MapTiler</a>: base maps, satellite imagery and place search.</li>
+    <li><a href="https://osmfoundation.org/wiki/Privacy_Policy" target="_blank" rel="noopener">OpenStreetMap and Nominatim</a>: backup map and search.</li>
+    <li><a href="https://mapterhorn.com/" target="_blank" rel="noopener">Mapterhorn</a> and <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noopener">AWS Open Data</a>: land and seafloor elevation data.</li>
+  </ul>
+
+  <h2>Terms of use</h2>
+  <ul>
+    <li><strong>It is an approximate simulation</strong>, made for exploring and learning. It only uses ground elevation: it doesn't account for tides, waves, currents, levees or buildings, and it doesn't predict tsunamis, storm surges or damage.</li>
+    <li><strong>Don't use it for safety decisions</strong>, such as whether a property is at risk or whether to evacuate. For that, follow your local authorities.</li>
+    <li>The app is provided “as is”, with no guarantee of accuracy or availability.</li>
+    <li>DeepTerra's code is open source under the <a href="LICENSE" target="_blank" rel="noopener">MIT license</a>. Third-party maps and data follow their own licenses (see “Data and credits” in the app).</li>
+  </ul>
+
+  <h2>Contact</h2>
+  <p>Questions or feedback: open an issue on <a href="https://github.com/Armittach/deepterra/issues" target="_blank" rel="noopener">GitHub</a>.</p>
+  <a class="back" href="./">← Back to DeepTerra</a>
+</article>
+</main>
+<script>
+(()=>{
+  // Mismo idioma que la app (localStorage «deepterra-idioma»); ?lang=en|es lo cambia.
+  const KEY='deepterra-idioma',q=new URLSearchParams(location.search).get('lang');
+  let lang=q==='en'||q==='es'?q:null;
+  if(!lang){try{lang=localStorage.getItem(KEY);}catch{}}
+  if(lang!=='en'&&lang!=='es')lang=/^es\b/i.test(navigator.language||'')?'es':'en';
+  function set(l,save){lang=l;document.documentElement.lang=l;document.title=l==='en'?'DeepTerra · Privacy and terms':'DeepTerra · Privacidad y condiciones';
+    for(const a of document.querySelectorAll('[data-lang-block]'))a.hidden=a.dataset.langBlock!==l;
+    for(const b of document.querySelectorAll('[data-lang]'))b.setAttribute('aria-pressed',String(b.dataset.lang===l));
+    if(save){try{localStorage.setItem(KEY,l);}catch{}}}
+  for(const b of document.querySelectorAll('[data-lang]'))b.addEventListener('click',()=>set(b.dataset.lang,true));
+  set(lang,false);
+})();
+</script>
+</body>
+</html>

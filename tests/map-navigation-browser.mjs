@@ -4,7 +4,8 @@ const require=createRequire(import.meta.url),{chromium}=require(process.env.PLAY
 const browser=await chromium.launch({channel:'chrome',headless:true,args:['--use-angle=swiftshader','--enable-webgl','--ignore-gpu-blocklist']});
 try{
  for(const {touch,canvasFallback} of [{touch:false,canvasFallback:false},{touch:true,canvasFallback:false},{touch:true,canvasFallback:true}]){
-  const context=await browser.newContext({viewport:touch?{width:390,height:844}:{width:1280,height:800},isMobile:touch,hasTouch:touch});
+  const context=await browser.newContext({locale:'es-CL',viewport:touch?{width:390,height:844}:{width:1280,height:800},isMobile:touch,hasTouch:touch});
+  await context.addInitScript(()=>{try{localStorage.setItem('deepterra-guia','vista')}catch{}});
   const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto(process.env.DRONE_TEST_URL||'http://192.168.1.100:8777');
   await page.waitForFunction(()=>window.DeepTerraDroneBridge?.snapshot().ready);

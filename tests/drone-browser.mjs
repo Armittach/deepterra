@@ -10,6 +10,8 @@ const output=process.env.DRONE_TEST_OUTPUT || path.resolve('test-results');
 await fs.mkdir(output,{recursive:true});
 const browser=await chromium.launchPersistentContext(path.join(output,'browser-profile'),{channel:process.env.DRONE_TEST_CHANNEL || 'chrome',headless:true,
   viewport:{width:1280,height:800},args:['--use-angle=swiftshader','--enable-webgl','--ignore-gpu-blocklist']});
+// La guía de la primera visita (tour.js) se marca como vista para que no tape la interfaz.
+await browser.addInitScript(()=>{try{localStorage.setItem('deepterra-guia','vista');localStorage.setItem('deepterra-guia-dron','vista')}catch{}});
 const page=await browser.newPage();
 page.setDefaultTimeout(15000);
 const errors=[];page.on('pageerror',error=>errors.push(error.message));
@@ -101,7 +103,8 @@ try{
   await page.evaluate(()=>{DeepTerraDroneBridge.loadDroneTerrain=window.originalDroneLoad;delete window.originalDroneLoad;});
   console.log('Load cancellation verified.');
   // An actual touch context, not just a narrower desktop viewport.
-  const mobileContext=await browser.browser().newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:1});
+  const mobileContext=await browser.browser().newContext({locale:'es-CL',viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:1});
+  await mobileContext.addInitScript(()=>{try{localStorage.setItem('deepterra-guia','vista');localStorage.setItem('deepterra-guia-dron','vista')}catch{}});
   const mobile=await mobileContext.newPage();mobile.setDefaultTimeout(15000);
   mobile.on('pageerror',error=>errors.push(error.message));
   await mobile.goto(url);await mobile.waitForFunction(()=>window.DeepTerraDroneBridge?.snapshot().ready);
@@ -127,9 +130,9 @@ try{
   await mobile.waitForFunction(()=>document.getElementById('droneCoords').textContent.includes('°'));
   assert.equal(await mobile.evaluate(()=>DeepTerraDroneBridge.snapshot().playing),true);
   assert.ok(await mobile.evaluate(()=>DeepTerraDroneBridge.snapshot().progress)>enteringProgress);
-  // In touch flight the dock collapses into the simulation pill.
+  // In touch flight the dock becomes the bottom gamepad panel (player + joysticks).
   assert.equal(await mobile.locator('.playback').isVisible(),false);
-  await mobile.locator('.sim-pill-play').tap();
+  await mobile.locator('#mandoPlay').tap();
   assert.equal(await mobile.evaluate(()=>DeepTerraDroneBridge.snapshot().playing),false);
   assert.equal(await mobile.getByRole('group',{name:'Joystick de movimiento',exact:true}).isVisible(),true);
   assert.equal(await mobile.locator('.cursor-info').isVisible(),false);
@@ -167,40 +170,45 @@ try{
   assert.notEqual(await mobile.locator('#droneCoords').textContent(),start);
   assert.equal(await mobile.evaluate(()=>window.getSelection().toString()),'');
   await mobile.waitForFunction(()=>document.getElementById('droneSpeedValue').textContent==='0 m/s',null,{timeout:8000});
-  const stickLabel=await mobile.locator('#droneMoveStick .stick-label').boundingBox(),telemetry=await mobile.locator('.drone-telemetry').boundingBox();
+  const stickLabel=await mobile.locator('#droneMoveStick .stick-label').boundingBox(),telemetry=await mobile.locator('.mando-stats').boundingBox();
   // Compact telemetry sits between the two joysticks.
   const moveBox=await mobile.locator('#droneMoveStick').boundingBox(),lookStickBox=await mobile.locator('#droneLookStick').boundingBox();
   assert.ok(telemetry.x>=moveBox.x+moveBox.width&&telemetry.x+telemetry.width<=lookStickBox.x);
   await mobile.locator('#droneSettingsToggle').tap();
   await mobile.locator('#droneShowTelemetry').setChecked(false,{force:true});
-  assert.equal(await mobile.locator('.drone-telemetry').isVisible(),false);
+  assert.equal(await mobile.locator('.mando-stats').isVisible(),false);
   assert.equal(await mobile.locator('#droneCoords').isVisible(),false);
+  assert.equal(await mobile.locator('#mandoPlay').isVisible(),true);
   await mobile.locator('#droneShowJoysticks').setChecked(false,{force:true});
   assert.equal(await mobile.locator('#droneMoveStick').isVisible(),false);
   assert.equal(await mobile.locator('#droneAltitudeStick').isVisible(),false);
   await mobile.locator('#droneShowTelemetry').setChecked(true,{force:true});
   await mobile.locator('#droneShowJoysticks').setChecked(true,{force:true});
   await mobile.locator('#droneSettingsClose').tap();
-  assert.equal(await mobile.locator('.drone-telemetry').isVisible(),true);
+  assert.equal(await mobile.locator('.mando-stats').isVisible(),true);
   assert.equal(await mobile.locator('#droneMoveStick').isVisible(),true);
   await mobile.screenshot({path:path.join(output,'drone-mobile.png')});
-  const panel=await mobile.locator('.drone-telemetry').boundingBox();
+  const panel=await mobile.locator('#droneMando').boundingBox();
   assert.ok(panel.x>=0&&panel.x+panel.width<=390);
-  await mobile.locator('#simPill').tap({position:{x:120,y:22}});
-  const bar=await mobile.locator('.playback').boundingBox();assert.ok(bar.y<844&&bar.y+bar.height<=844);
-  await mobile.locator('#simPill').tap({position:{x:120,y:22}});
+  await mobile.locator('#droneMandoHandle').tap();
+  await mobile.waitForFunction(()=>document.getElementById('droneMando').classList.contains('is-open'));
+  const bar=await mobile.locator('#droneMando').boundingBox();assert.ok(bar.y>0&&bar.y+bar.height<=844);
+  await mobile.locator('#droneMandoHandle').tap();
+  await mobile.waitForFunction(()=>!document.getElementById('droneMando').classList.contains('is-open')&&!document.getElementById('droneMando').classList.contains('is-moving'));
   assert.equal(await mobile.locator('.playback').isVisible(),false);
   await mobile.locator('#droneExit').tap();
   const orientation=await mobileContext.newCDPSession(mobile);
   await mobile.locator('#scenarioToggle').tap();
   await mobile.locator('#height').tap();
+  // Teclado abierto (pantalla más baja) y giro a horizontal: la app sigue usable y el escenario abierto.
   await orientation.send('Emulation.setDeviceMetricsOverride',{width:390,height:300,screenWidth:390,screenHeight:844,deviceScaleFactor:1,mobile:true,screenOrientation:{type:'portraitPrimary',angle:0}});
-  assert.equal(await mobile.locator('#portraitGuard').isVisible(),false,'Keyboard resize must not be treated as screen rotation');
   await mobile.locator('#height').press('Enter');
   await orientation.send('Emulation.setDeviceMetricsOverride',{width:844,height:390,screenWidth:844,screenHeight:390,deviceScaleFactor:1,mobile:true,screenOrientation:{type:'landscapePrimary',angle:90}});
-  await mobile.locator('#portraitGuard').waitFor({state:'visible'});
+  assert.equal(await mobile.locator('#portraitGuard').count(),0,'sin aviso de «usa en vertical»');
+  await mobile.waitForTimeout(300);
+  assert.equal(await mobile.locator('#scenarioPanel').isVisible(),true,'el escenario sigue abierto al girar');
   await orientation.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,screenWidth:390,screenHeight:844,deviceScaleFactor:1,mobile:true,screenOrientation:{type:'portraitPrimary',angle:0}});
-  await mobile.locator('#portraitGuard').waitFor({state:'hidden'});
+  assert.equal(await mobile.locator('#scenarioPanel').isVisible(),true);
   await orientation.detach();await mobileContext.close();
   assert.equal(errors.length,0,errors.join('\n'));
   console.log('Passed: dock cancellation, coastal 3D load, water sync, editable drone, flight, keyboard, exit and responsive layout.');

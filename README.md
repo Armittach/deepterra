@@ -2,7 +2,7 @@
 
 **¿Y si el mar subiera? Muévelo tú y mira qué pasaría.**
 
-DeepTerra es un mapa del mundo en el que puedes subir el nivel del mar, metro a metro, y ver qué zonas quedarían bajo el agua. Funciona directamente en el navegador, en el computador o en el celular.
+DeepTerra es un mapa del mundo en el que puedes subir el nivel del mar, metro a metro, y ver qué zonas quedarían bajo el agua. Funciona directamente en el navegador, en el computador o en el celular, en español o inglés.
 
 ## Qué puedes hacer
 

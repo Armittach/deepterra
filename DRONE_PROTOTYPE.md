@@ -1,7 +1,5 @@
 # Dron 3D · prototipo local
 
-Rama: `feature/drone-3d`. No está fusionada con `main` ni publicada en GitHub Pages. El flujo de Pages solo permite publicar `main`, incluso cuando se ejecuta manualmente.
-
 ## Abrir
 
 Con Node.js instalado, desde esta carpeta:
