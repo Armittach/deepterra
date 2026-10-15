@@ -4,27 +4,71 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#07131b">
-<title>DeepTerra · Simulador de inundación</title>
-<meta name="description" content="Sube el nivel del mar en cualquier lugar del mundo y mira cómo avanza el agua, en el mapa o volando con un dron. / Raise the sea level anywhere on Earth and watch the water spread.">
+<title>DeepTerra · Simulador de inundación y subida del nivel del mar</title>
+<meta name="description" content="Mapa interactivo y gratuito: sube el nivel del mar en cualquier lugar del mundo y mira qué zonas quedarían bajo el agua, en el mapa o volando en 3D con un dron.">
 <link rel="canonical" href="https://deepterra.app/">
+<!-- Idiomas: / detecta el idioma; ?lang=es y ?lang=en lo fijan. -->
+<link rel="alternate" hreflang="x-default" href="https://deepterra.app/">
+<link rel="alternate" hreflang="es" href="https://deepterra.app/?lang=es">
+<link rel="alternate" hreflang="en" href="https://deepterra.app/?lang=en">
 <!-- Vista previa al compartir el enlace (WhatsApp, redes, mensajería). -->
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="DeepTerra">
 <meta property="og:url" content="https://deepterra.app/">
-<meta property="og:title" content="DeepTerra · Flood simulator">
-<meta property="og:description" content="Raise the sea level anywhere on Earth and watch the water spread — on the map or flying a drone.">
+<meta property="og:title" content="DeepTerra · Simulador de inundación y subida del nivel del mar">
+<meta property="og:description" content="Mapa interactivo y gratuito: sube el nivel del mar en cualquier lugar del mundo y mira qué zonas quedarían bajo el agua, en el mapa o volando en 3D con un dron.">
 <meta property="og:image" content="https://deepterra.app/og-image.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="DeepTerra: map of a coastline with the water rising">
-<meta property="og:locale" content="en_US">
-<meta property="og:locale:alternate" content="es_CL">
+<meta property="og:image:alt" content="DeepTerra: mapa de una costa con el mar subiendo">
+<meta property="og:locale" content="es_CL">
+<meta property="og:locale:alternate" content="en_US">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="DeepTerra · Flood simulator">
-<meta name="twitter:description" content="Raise the sea level anywhere on Earth and watch the water spread — on the map or flying a drone.">
+<meta name="twitter:title" content="DeepTerra · Simulador de inundación y subida del nivel del mar">
+<meta name="twitter:description" content="Mapa interactivo y gratuito: sube el nivel del mar en cualquier lugar del mundo y mira qué zonas quedarían bajo el agua, en el mapa o volando en 3D con un dron.">
 <meta name="twitter:image" content="https://deepterra.app/og-image.png">
-<link rel="icon" href="logo.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="application-name" content="DeepTerra">
+<meta name="apple-mobile-web-app-title" content="DeepTerra">
+<!-- Íconos: Google usa el de 48 px o más para mostrarlo junto al resultado. -->
+<link rel="icon" href="/favicon.ico" sizes="48x48">
+<link rel="icon" href="/logo.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon-96.png" type="image/png" sizes="96x96">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<!-- Datos para buscadores: nombre del sitio, logo y qué es la app. -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "@id": "https://deepterra.app/#website",
+      "name": "DeepTerra",
+      "url": "https://deepterra.app/",
+      "inLanguage": ["es", "en"]
+    },
+    {
+      "@type": "Organization",
+      "@id": "https://deepterra.app/#org",
+      "name": "DeepTerra",
+      "url": "https://deepterra.app/",
+      "logo": "https://deepterra.app/icon-512.png"
+    },
+    {
+      "@type": "WebApplication",
+      "name": "DeepTerra",
+      "url": "https://deepterra.app/",
+      "description": "Mapa interactivo y gratuito: sube el nivel del mar en cualquier lugar del mundo y mira qué zonas quedarían bajo el agua, en el mapa o volando en 3D con un dron.",
+      "applicationCategory": "EducationalApplication",
+      "operatingSystem": "Web",
+      "browserRequirements": "Requiere JavaScript y WebGL",
+      "image": "https://deepterra.app/og-image.png",
+      "publisher": { "@id": "https://deepterra.app/#org" },
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+    }
+  ]
+}
+</script>
 <link rel="preload" href="vendor/fonts/Geist-Regular.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="vendor/leaflet.css">
 <link rel="stylesheet" href="ui.css?v=ui-62">
@@ -478,7 +522,7 @@
 </div>
 
 <script src="version.js?v=2.0.0"></script>
-<script src="i18n.js?v=i18n-5"></script>
+<script src="i18n.js?v=i18n-6"></script>
 <script src="vendor/lucide.min.js"></script>
 <script src="icons.js?v=icons-3"></script>
 <script src="vendor/leaflet.js"></script>

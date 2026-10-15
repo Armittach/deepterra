@@ -20,6 +20,9 @@
   const dict=new Map(Object.entries({
     // Página y barra superior
     'DeepTerra · Simulador de inundación':'DeepTerra · Flood simulator',
+    'DeepTerra · Simulador de inundación y subida del nivel del mar':'DeepTerra · Sea level rise and flood simulator',
+    'Mapa interactivo y gratuito: sube el nivel del mar en cualquier lugar del mundo y mira qué zonas quedarían bajo el agua, en el mapa o volando en 3D con un dron.':'Free interactive map: raise the sea level anywhere on Earth and see which areas would end up underwater — on the map or flying a 3D drone.',
+    'DeepTerra: mapa de una costa con el mar subiendo':'DeepTerra: map of a coastline with the water rising',
     'Mapa mundial de inundación, desplazable y ampliable':'World flood map, pannable and zoomable',
     'Información de DeepTerra':'About DeepTerra',
     'Buscar un lugar o coordenadas':'Search a place or coordinates',
@@ -244,6 +247,15 @@
   function applyDocument(){
     document.documentElement.lang=lang;
     const title=document.querySelector('title');if(title){if(!title.dataset.es)title.dataset.es=title.textContent;title.textContent=lang==='en'?t(title.dataset.es):title.dataset.es;}
+    // Datos para buscadores y vista previa al compartir, en el idioma de la página.
+    for(const m of document.querySelectorAll('meta[name="description"],meta[property="og:title"],meta[property="og:description"],meta[property="og:image:alt"],meta[name="twitter:title"],meta[name="twitter:description"]')){
+      if(!m.dataset.es)m.dataset.es=m.getAttribute('content')||'';m.setAttribute('content',lang==='en'?t(m.dataset.es):m.dataset.es);
+    }
+    const loc=document.querySelector('meta[property="og:locale"]'),alt=document.querySelector('meta[property="og:locale:alternate"]');
+    if(loc)loc.setAttribute('content',lang==='en'?'en_US':'es_CL');if(alt)alt.setAttribute('content',lang==='en'?'es_CL':'en_US');
+    // Con ?lang= la dirección canónica es la de ese idioma; sin él, la raíz.
+    const canon=document.querySelector('link[rel="canonical"]'),url='https://deepterra.app/'+(fromQuery?'?lang='+fromQuery:'');
+    if(canon)canon.setAttribute('href',url);const ogu=document.querySelector('meta[property="og:url"]');if(ogu)ogu.setAttribute('content',url);
     if(document.body)walk(document.body);
     for(const [n,rec] of texts){if(!n.isConnected)texts.delete(n);}
   }

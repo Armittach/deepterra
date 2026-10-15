@@ -1,0 +1,14 @@
+{
+  "name": "DeepTerra · Simulador de subida del nivel del mar",
+  "short_name": "DeepTerra",
+  "description": "Sube el nivel del mar en cualquier lugar del mundo y mira qué zonas quedarían bajo el agua.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#07131b",
+  "theme_color": "#07131b",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/logo.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
