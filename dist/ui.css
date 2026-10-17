@@ -66,7 +66,8 @@ kbd{font:500 12px var(--mono);padding:2px 7px;border-radius:6px;border:1px solid
 /* Barra superior */
 .topbar{position:fixed;z-index:1100;left:max(var(--edge),env(safe-area-inset-left));top:var(--top);display:flex;align-items:center;gap:10px}
 .brand{height:48px;display:flex;align-items:center;gap:10px;padding:0 14px;border-radius:14px;font:600 18px var(--font);letter-spacing:-.2px;color:var(--text)}
-.brand .brand-mark{color:var(--accent);width:24px;height:24px}
+.brand .brand-mark{color:var(--text);width:24px;height:24px}
+.brand .brand-deep{color:#38bdf8}
 .brand .brand-chevron{color:var(--muted);width:16px;height:16px}
 .brand:hover{border-color:var(--line-strong)}
 .search{position:relative;height:48px;width:360px;display:flex;align-items:center;gap:10px;padding:0 8px 0 14px;border-radius:14px}
