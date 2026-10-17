@@ -156,7 +156,7 @@
     welcomeRoot=document.createElement('div');welcomeRoot.className='welcome';
     welcomeRoot.innerHTML=`<section class="welcome-card" role="dialog" aria-modal="true" aria-labelledby="welcomeTitle" aria-describedby="welcomeText">
   <svg class="welcome-rings" viewBox="0 0 400 400" aria-hidden="true"><g fill="none" stroke="currentColor"><path d="M200 40c95 0 165 62 165 155 0 100-75 170-170 170C100 365 35 292 35 200 35 105 105 40 200 40z"/><path d="M203 85c70 0 118 46 118 112 0 72-52 124-122 124-68 0-118-52-118-118 0-70 52-118 122-118z"/><path d="M205 130c45 0 75 30 75 70 0 46-33 78-78 78-43 0-75-33-75-75 0-44 33-73 78-73z"/></g></svg>
-  <div class="welcome-logo" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none"><defs><clipPath id="welcomeClip"><circle cx="32" cy="32" r="26"/></clipPath></defs><g clip-path="url(#welcomeClip)"><path class="welcome-wave" d="${WAVE}" fill="#38bdf8"/></g><circle cx="32" cy="32" r="26" stroke="#5eead4" stroke-width="4"/></svg></div>
+  <div class="welcome-logo" aria-hidden="true"><svg viewBox="0 0 64 64"><defs><clipPath id="welcomeClip"><rect x="4" y="8" width="56" height="42" rx="3"/></clipPath></defs><path d="M14.82 33L26 14L34 27L40 19L48.69 33Z" fill="#e6eff2"/><g clip-path="url(#welcomeClip)"><path class="welcome-wave" d="${WAVE}" fill="#38bdf8" fill-opacity=".92"/></g></svg></div>
   <div class="welcome-body">
     <p class="welcome-kicker"><span>Simulador de inundación</span><span class="welcome-version">v${version||major}</span></p>
     <h2 id="welcomeTitle">Bienvenido a DeepTerra</h2>
